@@ -4,6 +4,7 @@ import { useAppStore } from '@/store/useAppStore';
 import Sidebar from '@/components/Sidebar';
 import Dashboard from '@/components/dashboard/Dashboard';
 import ShipmentTable from '@/components/shipments/ShipmentTable';
+import ExportacionesTable from '@/components/exportaciones/ExportacionesTable';
 import TraceSearch from '@/components/traceability/TraceSearch';
 import AnalyticsCharts from '@/components/analytics/AnalyticsCharts';
 import ProductoDestino from '@/components/comparativa/ProductoDestino';
@@ -16,7 +17,8 @@ export default function Home() {
   const renderContent = () => {
     switch (activeTab) {
       case 'dashboard': return <Dashboard />;
-      case 'envios': return <ShipmentTable />;
+      case 'depositos': return <ShipmentTable />;
+      case 'exportaciones': return <ExportacionesTable />;
       case 'trazabilidad': return <TraceSearch />;
       case 'comparativa': return <ProductoDestino />;
       case 'analiticas': return <AnalyticsCharts />;
