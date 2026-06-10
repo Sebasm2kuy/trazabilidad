@@ -51,4 +51,8 @@ prompt
 
 server.log
 # Skills directory
-/skills/
+/skills/db/custom.db
+db/seed_data.json
+upload/
+dev.log
+.zscripts/

@@ -1,83 +1,75 @@
-import { db } from '@/lib/db'
-import { NextRequest, NextResponse } from 'next/server'
-import * as XLSX from 'xlsx'
+import { db } from '@/lib/db';
+import { NextRequest, NextResponse } from 'next/server';
+import * as XLSX from 'xlsx';
 
 export async function GET(req: NextRequest) {
-  const { searchParams } = new URL(req.url)
-  const search = searchParams.get('search') || ''
-  const paisDestino = searchParams.get('paisDestino') || ''
-  const producto = searchParams.get('producto') || ''
-  const destino = searchParams.get('destino') || ''
-  const fechaDesde = searchParams.get('fechaDesde') || ''
-  const fechaHasta = searchParams.get('fechaHasta') || ''
-  const tipo = searchParams.get('tipo') || ''
+  const url = req.nextUrl;
+  const search = url.searchParams.get('search') || '';
+  const pais = url.searchParams.get('pais') || '';
+  const producto = url.searchParams.get('producto') || '';
+  const destino = url.searchParams.get('destino') || '';
+  const tipo = url.searchParams.get('tipo') || '';
+  const fechaDesde = url.searchParams.get('fechaDesde') || '';
+  const fechaHasta = url.searchParams.get('fechaHasta') || '';
 
-  const where: Record<string, unknown> = {}
-
+  const where: Record<string, unknown> = {};
   if (search) {
     where.OR = [
-      { nroTramite: { contains: search } },
+      { nroTramite: { equals: isNaN(Number(search)) ? 0 : Number(search) } },
       { nroCote: { contains: search } },
       { nombreEstablecimientoDestino: { contains: search } },
       { denominacionMercaderia: { contains: search } },
-    ]
+    ];
   }
-  if (paisDestino) where.paisDestino = paisDestino
-  if (producto) where.denominacionMercaderia = producto
-  if (destino) where.nombreEstablecimientoDestino = destino
-  if (tipo) where.tipo = tipo
-
+  if (pais) where.paisDestino = { contains: pais };
+  if (producto) where.denominacionMercaderia = { contains: producto };
+  if (destino) where.nombreEstablecimientoDestino = { contains: destino };
+  if (tipo) where.tipo = tipo;
   if (fechaDesde || fechaHasta) {
-    const dateFilter: Record<string, unknown> = {}
-    if (fechaDesde) dateFilter.gte = new Date(fechaDesde)
-    if (fechaHasta) {
-      const end = new Date(fechaHasta)
-      end.setHours(23, 59, 59, 999)
-      dateFilter.lte = end
-    }
-    where.fechaTramite = dateFilter
+    const f: Record<string, unknown> = {};
+    if (fechaDesde) f.gte = new Date(fechaDesde);
+    if (fechaHasta) f.lte = new Date(fechaHasta + 'T23:59:59');
+    where.fechaTramite = f;
   }
 
   const shipments = await db.shipment.findMany({
     where,
     orderBy: { fechaTramite: 'desc' },
-  })
+    select: {
+      nroTramite: true, fechaTramite: true, nroCote: true,
+      nombreEstablecimientoDestino: true, paisDestino: true,
+      denominacionMercaderia: true, corte: true, cantidadEnvases: true,
+      pesoBruto: true, pesoNeto: true, tipo: true, matriculaCamion: true,
+      precinto1: true, tipoTransporte: true,
+    },
+  });
 
-  const exportData = shipments.map((s) => ({
+  const data = shipments.map(s => ({
     'Nro. Trámite': s.nroTramite,
-    'Fecha Trámite': s.fechaTramite ? new Date(s.fechaTramite).toLocaleDateString('es-UY') : '',
-    'COTE': s.nroCote,
+    'Fecha Trámite': s.fechaTramite.toISOString().split('T')[0],
+    'Nro. COTE': s.nroCote,
     'Destino': s.nombreEstablecimientoDestino,
-    'País': s.paisDestino,
+    'País Destino': s.paisDestino,
     'Producto': s.denominacionMercaderia,
     'Corte': s.corte,
-    'Envases': s.cantidadEnvases || '',
-    'Peso Bruto (kg)': s.pesoBruto ? Math.round(s.pesoBruto) : '',
-    'Peso Neto (kg)': s.pesoNeto ? Math.round(s.pesoNeto) : '',
-    'Pallets': s.pallets || '',
-    'Matrícula Camión': s.matriculaCamion || '',
-    'Precinto': s.precinto1 || '',
-    'Certificado Sanitario': s.nroCertificadoSanitario || '',
+    'Envases': s.cantidadEnvases,
+    'Peso Bruto (kg)': s.pesoBruto,
+    'Peso Neto (kg)': s.pesoNeto,
+    'Transporte': s.tipoTransporte,
+    'Matrícula': s.matriculaCamion,
+    'Precinto': s.precinto1,
     'Tipo': s.tipo,
-  }))
+  }));
 
-  const wb = XLSX.utils.book_new()
-  const ws = XLSX.utils.json_to_sheet(exportData)
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.json_to_sheet(data);
+  XLSX.utils.book_append_sheet(wb, ws, 'Envíos');
+  const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
 
-  // Set column widths
-  ws['!cols'] = [
-    { wch: 14 }, { wch: 14 }, { wch: 18 }, { wch: 30 }, { wch: 18 },
-    { wch: 30 }, { wch: 20 }, { wch: 10 }, { wch: 14 }, { wch: 14 },
-    { wch: 10 }, { wch: 18 }, { wch: 14 }, { wch: 20 }, { wch: 10 },
-  ]
-
-  XLSX.utils.book_append_sheet(wb, ws, 'Envíos')
-  const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' })
-
-  return new NextResponse(buffer, {
+  return new NextResponse(buf, {
     headers: {
       'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'Content-Disposition': 'attachment; filename="envios_trazabilidad.xlsx"',
+      'Content-Disposition': `attachment; filename="trazabilidad_export_${new Date().toISOString().split('T')[0]}.xlsx"`,
     },
-  })
+  });
 }

@@ -89,7 +89,7 @@ export async function POST(req: NextRequest) {
       fechaInicioProduccion: body.fechaInicioProduccion ? new Date(body.fechaInicioProduccion) : null,
       fechaFinProduccion: body.fechaFinProduccion ? new Date(body.fechaFinProduccion) : null,
       fechaInicioCongelacion: body.fechaInicioCongelacion ? new Date(body.fechaInicioCongelacion) : null,
-      fechaFinCongelacion: body.fechaFinCongelacion : null,
+      fechaFinCongelacion: body.fechaFinCongelacion ? new Date(body.fechaFinCongelacion) : null,
       proceso: body.proceso || null,
       tipo: body.tipo || 'ingreso',
     },

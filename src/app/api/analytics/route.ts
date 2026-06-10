@@ -15,7 +15,6 @@ export async function GET() {
         fechaTramite: true,
         pesoNeto: true,
         cantidadEnvases: true,
-        _count: { select: { id: true } },
       },
       orderBy: { fechaTramite: 'asc' },
     }),
