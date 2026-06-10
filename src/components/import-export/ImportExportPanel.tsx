@@ -5,7 +5,7 @@ import { Download, Upload, Info } from 'lucide-react';
 
 export default function ImportExportPanel() {
   const handleExport = () => {
-    fetch('/data/shipments.json').then(r=>r.json()).then(async (shipments) => {
+    fetch('data/shipments.json').then(r=>r.json()).then(async (shipments) => {
       const XLSX = await import('xlsx');
       const data = shipments.map((s:Record<string,unknown>) => ({
         'Nro. Trámite':s.nroTramite,'Fecha':s.fechaTramite?new Date(s.fechaTramite).toISOString().split('T')[0]:'',

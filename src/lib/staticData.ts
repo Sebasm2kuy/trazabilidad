@@ -3,7 +3,7 @@ import type { Shipment } from './types';
 const shipmentsCache: { data: Shipment[]; loaded: boolean } = { data: [], loaded: false };
 
 export async function fetchAnalytics() {
-  const r = await fetch('/data/analytics.json');
+  const r = await fetch('data/analytics.json');
   return r.json();
 }
 
@@ -19,7 +19,7 @@ export async function fetchShipments(params: {
   fechaHasta?: string;
 }) {
   if (!shipmentsCache.loaded) {
-    const r = await fetch('/data/shipments.json');
+    const r = await fetch('data/shipments.json');
     shipmentsCache.data = await r.json();
     shipmentsCache.loaded = true;
   }
