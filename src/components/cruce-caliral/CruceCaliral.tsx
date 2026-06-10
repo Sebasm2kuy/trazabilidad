@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Search, X, ChevronLeft, ChevronRight, Eye, Download, ArrowLeftRight, AlertTriangle, CheckCircle2, Link2, Unlink, PackageMinus } from 'lucide-react';
+import { Search, X, ChevronLeft, ChevronRight, Eye, Download, ArrowLeftRight, AlertTriangle, CheckCircle2, Link2, Unlink, PackageMinus, Pencil, Save, Plus, Trash2, RotateCcw } from 'lucide-react';
 
 function fd(d: string | null | undefined) { if (!d) return '-'; return new Date(d).toLocaleDateString('es-UY', { day: '2-digit', month: '2-digit', year: 'numeric' }); }
 function fmt(n: number) { if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M'; if (n >= 1000) return (n / 1000).toFixed(1) + 'K'; return Math.round(n).toLocaleString('es-UY'); }
@@ -23,6 +23,7 @@ interface IngresoLine {
   pesoBruto: number | null;
   cantidadEnvases: number | null;
   paisDestino: string;
+  [key: string]: unknown;
 }
 
 interface IngresoAgg {
@@ -73,7 +74,8 @@ interface CruceRow {
   totalKgIngreso: number;
   envasesExp: number;
   kgExp: number;
-  diffEnvases: number;  // cajas ingresadas - cajas exportadas. Positivo = sobran cajas ingresadas (normal). Negativo = se exportaron mas de las que ingresaron (error)
+  diffEnvases: number;
+  isManualLink?: boolean;
 }
 
 interface SinCruceRow {
@@ -87,8 +89,60 @@ interface IngresoPendienteRow {
   fecha: string;
   producto: string;
   pesoNeto: number;
+  pesoBruto: number;
   envases: number;
   cortes: string[];
+}
+
+// --- Edit types ---
+interface ManualCoteLink { cote: string; cajas: number; }
+
+interface ExportEdit {
+  nroCote?: string;
+  nroTramite?: number;
+  fechaTramite?: string;
+  paisDestino?: string;
+  denominacionMercaderia?: string;
+  corte?: string;
+  pesoNeto?: number | null;
+  pesoBruto?: number | null;
+  cantidadEnvases?: number | null;
+  contenedorSerieNro?: string;
+  nroCertificadoSanitario?: string;
+  observaciones?: string;
+  tipoTransporte?: string;
+  nombreEstablecimientoCertif?: string;
+  precinto1?: string;
+  matriculaCamion?: string;
+  manualCotes?: ManualCoteLink[];
+}
+
+interface IngresoEdit {
+  envases?: number;
+  pesoNeto?: number;
+  pesoBruto?: number;
+  producto?: string;
+}
+
+interface EditsStore {
+  exports: Record<string, ExportEdit>;
+  ingresos: Record<string, IngresoEdit>;
+}
+
+const EDITS_KEY = 'cruce_caliral_edits';
+
+function loadEdits(): EditsStore {
+  if (typeof window === 'undefined') return { exports: {}, ingresos: {} };
+  try {
+    const raw = localStorage.getItem(EDITS_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch { /* ignore */ }
+  return { exports: {}, ingresos: {} };
+}
+
+function saveEdits(edits: EditsStore) {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(EDITS_KEY, JSON.stringify(edits));
 }
 
 // --- Data loading ---
@@ -137,6 +191,42 @@ function aggregateByCote(lines: IngresoLine[]): Map<string, IngresoAgg> {
   return map;
 }
 
+// Apply edits to raw data
+function applyExportEdit(exp: ExpRecord, edit: ExportEdit): ExpRecord {
+  const e = { ...exp };
+  if (edit.nroCote !== undefined) e.nroCote = edit.nroCote;
+  if (edit.nroTramite !== undefined) e.nroTramite = edit.nroTramite;
+  if (edit.fechaTramite !== undefined) e.fechaTramite = edit.fechaTramite;
+  if (edit.paisDestino !== undefined) e.paisDestino = edit.paisDestino;
+  if (edit.denominacionMercaderia !== undefined) e.denominacionMercaderia = edit.denominacionMercaderia;
+  if (edit.corte !== undefined) e.corte = edit.corte;
+  if (edit.pesoNeto !== undefined) e.pesoNeto = edit.pesoNeto;
+  if (edit.pesoBruto !== undefined) e.pesoBruto = edit.pesoBruto;
+  if (edit.cantidadEnvases !== undefined) e.cantidadEnvases = edit.cantidadEnvases;
+  if (edit.contenedorSerieNro !== undefined) e.contenedorSerieNro = edit.contenedorSerieNro;
+  if (edit.nroCertificadoSanitario !== undefined) e.nroCertificadoSanitario = edit.nroCertificadoSanitario;
+  if (edit.observaciones !== undefined) e.observaciones = edit.observaciones;
+  if (edit.tipoTransporte !== undefined) e.tipoTransporte = edit.tipoTransporte;
+  if (edit.nombreEstablecimientoCertif !== undefined) e.nombreEstablecimientoCertif = edit.nombreEstablecimientoCertif;
+  if (edit.precinto1 !== undefined) e.precinto1 = edit.precinto1;
+  if (edit.matriculaCamion !== undefined) e.matriculaCamion = edit.matriculaCamion;
+  return e;
+}
+
+function applyIngresoEdit(agg: IngresoAgg, edit: IngresoEdit): IngresoAgg {
+  const a = { ...agg };
+  if (edit.envases !== undefined) a.envases = edit.envases;
+  if (edit.pesoNeto !== undefined) a.pesoNeto = edit.pesoNeto;
+  if (edit.pesoBruto !== undefined) a.pesoBruto = edit.pesoBruto;
+  if (edit.producto !== undefined) a.producto = edit.producto;
+  return a;
+}
+
+// --- Label component for edit form ---
+function FieldLabel({ children }: { children: React.ReactNode }) {
+  return <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-wide mb-1">{children}</label>;
+}
+
 // --- Component ---
 export default function CruceCaliral() {
   const [loading, setLoading] = useState(true);
@@ -160,65 +250,276 @@ export default function CruceCaliral() {
   const [sinCruceRows, setSinCruceRows] = useState<SinCruceRow[]>([]);
   const [pendienteRows, setPendienteRows] = useState<IngresoPendienteRow[]>([]);
 
+  // --- Edit state ---
+  const [edits, setEdits] = useState<EditsStore>({ exports: {}, ingresos: {} });
+  const [editOpen, setEditOpen] = useState(false);
+  const [editTarget, setEditTarget] = useState<{ type: 'export' | 'ingreso'; id: string; row?: CruceRow | SinCruceRow | IngresoPendienteRow } | null>(null);
+
+  // Export edit form state
+  const [ef_nroCote, setEf_nroCote] = useState('');
+  const [ef_nroTramite, setEf_nroTramite] = useState('');
+  const [ef_pais, setEf_pais] = useState('');
+  const [ef_producto, setEf_producto] = useState('');
+  const [ef_corte, setEf_corte] = useState('');
+  const [ef_cajas, setEf_cajas] = useState('');
+  const [ef_pesoNeto, setEf_pesoNeto] = useState('');
+  const [ef_pesoBruto, setEf_pesoBruto] = useState('');
+  const [ef_contenedor, setEf_contenedor] = useState('');
+  const [ef_certSanitario, setEf_certSanitario] = useState('');
+  const [ef_observaciones, setEf_observaciones] = useState('');
+  const [ef_transporte, setEf_transporte] = useState('');
+  const [ef_estabCertif, setEf_estabCertif] = useState('');
+  const [ef_precinto, setEf_precinto] = useState('');
+  const [ef_matricula, setEf_matricula] = useState('');
+  const [ef_manualCotes, setEf_manualCotes] = useState<ManualCoteLink[]>([]);
+  const [ef_newCote, setEf_newCote] = useState('');
+  const [ef_newCoteCajas, setEf_newCoteCajas] = useState('');
+
+  // Ingreso edit form state
+  const [ei_cajas, setEi_cajas] = useState('');
+  const [ei_pesoNeto, setEi_pesoNeto] = useState('');
+  const [ei_pesoBruto, setEi_pesoBruto] = useState('');
+  const [ei_producto, setEi_producto] = useState('');
+
+  // Recompute cruce when edits change
+  const recomputeCruce = useCallback((editsData: EditsStore) => {
+    if (!cache.loaded) return;
+    const iMap = aggregateByCote(cache.shipments);
+    // Apply ingreso edits
+    for (const [cote, edit] of Object.entries(editsData.ingresos)) {
+      const agg = iMap.get(cote);
+      if (agg) iMap.set(cote, applyIngresoEdit(agg, edit));
+    }
+    setIngresoMap(iMap);
+
+    // Apply export edits to cache exports
+    const editedExports = cache.exports.map(e => {
+      const edit = editsData.exports[e.id];
+      return edit ? applyExportEdit(e, edit) : e;
+    });
+
+    const cruces: CruceRow[] = [];
+    const sinCruce: SinCruceRow[] = [];
+    const referencedCotes = new Set<string>();
+
+    for (const exp of editedExports) {
+      const exportEdit = editsData.exports[exp.id];
+      const obs = exp.observaciones || '';
+
+      // Determine ingreso COTEs: manual links override observaciones extraction
+      let cotesWithCajas: ManualCoteLink[] = [];
+      let isManual = false;
+
+      if (exportEdit?.manualCotes && exportEdit.manualCotes.length > 0) {
+        cotesWithCajas = exportEdit.manualCotes;
+        isManual = true;
+      } else {
+        const refs = extractIngresoCotes(obs, exp.nroCote);
+        cotesWithCajas = refs.map(c => ({ cote: c, cajas: 0 })); // cajas=0 means use aggregate
+      }
+
+      const foundInCaliral = cotesWithCajas.filter(c => iMap.has(c.cote));
+      const notInCaliral = cotesWithCotes.filter(c => !iMap.has(c.cote));
+
+      if (foundInCaliral.length > 0) {
+        const aggs = foundInCaliral.map(c => iMap.get(c.cote)!);
+        const totalEnvasesIngreso = isManual
+          ? foundInCaliral.reduce((s, c) => s + c.cajas, 0)
+          : aggs.reduce((s, a) => s + a.envases, 0);
+        const totalKgIngreso = aggs.reduce((s, a) => s + a.pesoNeto, 0);
+        const envasesExp = exp.cantidadEnvases || 0;
+        const kgExp = exp.pesoNeto || 0;
+        cruces.push({
+          exp,
+          ingresoCotes: foundInCaliral.map(c => c.cote),
+          ingresoCotesNotFound: notInCaliral.map(c => c.cote),
+          ingresoAgg: aggs,
+          totalEnvasesIngreso,
+          totalKgIngreso,
+          envasesExp,
+          kgExp,
+          diffEnvases: totalEnvasesIngreso - envasesExp,
+          isManualLink: isManual,
+        });
+        foundInCaliral.forEach(c => referencedCotes.add(c.cote));
+      } else {
+        const obsPreview = obs ? obs.substring(0, 120) : '';
+        sinCruce.push({ exp, obsPreview });
+      }
+    }
+
+    const pendientes: IngresoPendienteRow[] = [];
+    for (const [cote, agg] of iMap) {
+      if (!referencedCotes.has(cote)) {
+        pendientes.push({
+          cote, tramite: agg.tramite, fecha: agg.fecha,
+          producto: agg.producto, pesoNeto: agg.pesoNeto,
+          pesoBruto: agg.pesoBruto, envases: agg.envases, cortes: agg.cortes,
+        });
+      }
+    }
+
+    setCruceRows(cruces.sort((a, b) => b.exp.fechaTramite.localeCompare(a.exp.fechaTramite)));
+    setSinCruceRows(sinCruce.sort((a, b) => b.exp.fechaTramite.localeCompare(a.exp.fechaTramite)));
+    setPendienteRows(pendientes.sort((a, b) => b.fecha.localeCompare(a.fecha)));
+    setPaises([...new Set(editedExports.map(e => e.paisDestino).filter(Boolean))].sort());
+  }, []);
+
   useEffect(() => {
     (async () => {
       await ensureData();
-      const iMap = aggregateByCote(cache.shipments);
-      setIngresoMap(iMap);
-
-      const cruces: CruceRow[] = [];
-      const sinCruce: SinCruceRow[] = [];
-      const referencedCotes = new Set<string>();
-
-      for (const exp of cache.exports) {
-        const obs = exp.observaciones || '';
-        const refs = extractIngresoCotes(obs, exp.nroCote);
-        const foundInCaliral = refs.filter(c => iMap.has(c));
-        const notInCaliral = refs.filter(c => !iMap.has(c));
-
-        if (foundInCaliral.length > 0) {
-          const aggs = foundInCaliral.map(c => iMap.get(c)!);
-          const totalEnvasesIngreso = aggs.reduce((s, a) => s + a.envases, 0);
-          const totalKgIngreso = aggs.reduce((s, a) => s + a.pesoNeto, 0);
-          const envasesExp = exp.cantidadEnvases || 0;
-          const kgExp = exp.pesoNeto || 0;
-          cruces.push({
-            exp,
-            ingresoCotes: foundInCaliral,
-            ingresoCotesNotFound: notInCaliral,
-            ingresoAgg: aggs,
-            totalEnvasesIngreso,
-            totalKgIngreso,
-            envasesExp,
-            kgExp,
-            diffEnvases: totalEnvasesIngreso - envasesExp,
-          });
-          foundInCaliral.forEach(c => referencedCotes.add(c));
-        } else {
-          const obsPreview = obs ? obs.substring(0, 120) : '';
-          sinCruce.push({ exp, obsPreview });
-        }
-      }
-
-      const pendientes: IngresoPendienteRow[] = [];
-      for (const [cote, agg] of iMap) {
-        if (!referencedCotes.has(cote)) {
-          pendientes.push({
-            cote, tramite: agg.tramite, fecha: agg.fecha,
-            producto: agg.producto, pesoNeto: agg.pesoNeto,
-            envases: agg.envases, cortes: agg.cortes,
-          });
-        }
-      }
-
-      setCruceRows(cruces.sort((a, b) => b.exp.fechaTramite.localeCompare(a.exp.fechaTramite)));
-      setSinCruceRows(sinCruce.sort((a, b) => b.exp.fechaTramite.localeCompare(a.exp.fechaTramite)));
-      setPendienteRows(pendientes.sort((a, b) => b.fecha.localeCompare(a.fecha)));
-
-      setPaises([...new Set(cache.exports.map(e => e.paisDestino).filter(Boolean))].sort());
+      const loadedEdits = loadEdits();
+      setEdits(loadedEdits);
+      recomputeCruce(loadedEdits);
       setLoading(false);
     })();
-  }, []);
+  }, [recomputeCruce]);
+
+  // --- Edit handlers ---
+  const openExportEdit = (row: CruceRow | SinCruceRow) => {
+    const exp = row.exp;
+    const edit = edits.exports[exp.id];
+    setEditTarget({ type: 'export', id: exp.id, row });
+    setEf_nroCote(exp.nroCote || '');
+    setEf_nroTramite(String(exp.nroTramite || ''));
+    setEf_pais(exp.paisDestino || '');
+    setEf_producto(exp.denominacionMercaderia || '');
+    setEf_corte(exp.corte || '');
+    setEf_cajas(exp.cantidadEnvases != null ? String(exp.cantidadEnvases) : '');
+    setEf_pesoNeto(exp.pesoNeto != null ? String(exp.pesoNeto) : '');
+    setEf_pesoBruto(exp.pesoBruto != null ? String(exp.pesoBruto) : '');
+    setEf_contenedor(exp.contenedorSerieNro || '');
+    setEf_certSanitario(exp.nroCertificadoSanitario || '');
+    setEf_observaciones(exp.observaciones || '');
+    setEf_transporte(exp.tipoTransporte || '');
+    setEf_estabCertif(exp.nombreEstablecimientoCertif || '');
+    setEf_precinto(exp.precinto1 || '');
+    setEf_matricula(exp.matriculaCamion || '');
+    setEf_newCote('');
+    setEf_newCoteCajas('');
+
+    if (edit?.manualCotes && edit.manualCotes.length > 0) {
+      setEf_manualCotes([...edit.manualCotes]);
+    } else {
+      setEf_manualCotes([]);
+    }
+    setEditOpen(true);
+  };
+
+  const openIngresoEdit = (row: IngresoPendienteRow) => {
+    const edit = edits.ingresos[row.cote];
+    setEditTarget({ type: 'ingreso', id: row.cote, row });
+    setEi_cajas(edit?.envases !== undefined ? String(edit.envases) : String(row.envases));
+    setEi_pesoNeto(edit?.pesoNeto !== undefined ? String(edit.pesoNeto) : String(row.pesoNeto));
+    setEi_pesoBruto(edit?.pesoBruto !== undefined ? String(edit.pesoBruto) : String(row.pesoBruto));
+    setEi_producto(edit?.producto !== undefined ? edit.producto : row.producto);
+    setEditOpen(true);
+  };
+
+  const addManualCote = () => {
+    const cote = ef_newCote.trim().toUpperCase();
+    const cajas = parseInt(ef_newCoteCajas) || 0;
+    if (!cote || cajas <= 0) return;
+    if (ef_manualCotes.some(c => c.cote === cote)) return;
+    setEf_manualCotes(prev => [...prev, { cote, cajas }]);
+    setEf_newCote('');
+    setEf_newCoteCajas('');
+  };
+
+  const removeManualCote = (cote: string) => {
+    setEf_manualCotes(prev => prev.filter(c => c.cote !== cote));
+  };
+
+  const saveExportEdit = () => {
+    if (!editTarget || editTarget.type !== 'export') return;
+    const exp = (editTarget.row as CruceRow | SinCruceRow).exp;
+    const newEdit: ExportEdit = {};
+    // Only save fields that differ from original
+    if (ef_nroCote !== exp.nroCote) newEdit.nroCote = ef_nroCote;
+    if (parseInt(ef_nroTramite) !== exp.nroTramite) newEdit.nroTramite = parseInt(ef_nroTramite) || exp.nroTramite;
+    if (ef_pais !== exp.paisDestino) newEdit.paisDestino = ef_pais;
+    if (ef_producto !== exp.denominacionMercaderia) newEdit.denominacionMercaderia = ef_producto;
+    if (ef_corte !== exp.corte) newEdit.corte = ef_corte;
+    const cajasVal = ef_cajas ? parseInt(ef_cajas) : null;
+    if (cajasVal !== exp.cantidadEnvases) newEdit.cantidadEnvases = cajasVal;
+    const pnVal = ef_pesoNeto ? parseFloat(ef_pesoNeto) : null;
+    if (pnVal !== exp.pesoNeto) newEdit.pesoNeto = pnVal;
+    const pbVal = ef_pesoBruto ? parseFloat(ef_pesoBruto) : null;
+    if (pbVal !== exp.pesoBruto) newEdit.pesoBruto = pbVal;
+    if (ef_contenedor !== (exp.contenedorSerieNro || '')) newEdit.contenedorSerieNro = ef_contenedor;
+    if (ef_certSanitario !== (exp.nroCertificadoSanitario || '')) newEdit.nroCertificadoSanitario = ef_certSanitario;
+    if (ef_observaciones !== (exp.observaciones || '')) newEdit.observaciones = ef_observaciones;
+    if (ef_transporte !== (exp.tipoTransporte || '')) newEdit.tipoTransporte = ef_transporte;
+    if (ef_estabCertif !== (exp.nombreEstablecimientoCertif || '')) newEdit.nombreEstablecimientoCertif = ef_estabCertif;
+    if (ef_precinto !== (exp.precinto1 || '')) newEdit.precinto1 = ef_precinto;
+    if (ef_matricula !== (exp.matriculaCamion || '')) newEdit.matriculaCamion = ef_matricula;
+    if (ef_manualCotes.length > 0) newEdit.manualCotes = ef_manualCotes;
+
+    const newEdits = { ...edits };
+    if (Object.keys(newEdit).length > 0) {
+      newEdits.exports = { ...newEdits.exports, [exp.id]: newEdit };
+    } else {
+      const { [exp.id]: _, ...rest } = newEdits.exports;
+      newEdits.exports = rest;
+    }
+    setEdits(newEdits);
+    saveEdits(newEdits);
+    recomputeCruce(newEdits);
+    setEditOpen(false);
+  };
+
+  const saveIngresoEdit = () => {
+    if (!editTarget || editTarget.type !== 'ingreso') return;
+    const row = editTarget.row as IngresoPendienteRow;
+    const agg = ingresoMap.get(row.cote);
+    if (!agg) return;
+    const newEdit: IngresoEdit = {};
+    const cajasVal = parseInt(ei_cajas) || 0;
+    if (cajasVal !== agg.envases) newEdit.envases = cajasVal;
+    const pnVal = parseFloat(ei_pesoNeto) || 0;
+    if (pnVal !== agg.pesoNeto) newEdit.pesoNeto = pnVal;
+    const pbVal = parseFloat(ei_pesoBruto) || 0;
+    if (pbVal !== agg.pesoBruto) newEdit.pesoBruto = pbVal;
+    if (ei_producto !== agg.producto) newEdit.producto = ei_producto;
+
+    const newEdits = { ...edits };
+    if (Object.keys(newEdit).length > 0) {
+      newEdits.ingresos = { ...newEdits.ingresos, [row.cote]: newEdit };
+    } else {
+      const { [row.cote]: _, ...rest } = newEdits.ingresos;
+      newEdits.ingresos = rest;
+    }
+    setEdits(newEdits);
+    saveEdits(newEdits);
+    recomputeCruce(newEdits);
+    setEditOpen(false);
+  };
+
+  const clearExportEdit = () => {
+    if (!editTarget || editTarget.type !== 'export') return;
+    const exp = (editTarget.row as CruceRow | SinCruceRow).exp;
+    const newEdits = { ...edits };
+    const { [exp.id]: _, ...rest } = newEdits.exports;
+    newEdits.exports = rest;
+    setEdits(newEdits);
+    saveEdits(newEdits);
+    recomputeCruce(newEdits);
+    setEditOpen(false);
+  };
+
+  const clearIngresoEdit = () => {
+    if (!editTarget || editTarget.type !== 'ingreso') return;
+    const cote = editTarget.id;
+    const newEdits = { ...edits };
+    const { [cote]: _, ...rest } = newEdits.ingresos;
+    newEdits.ingresos = rest;
+    setEdits(newEdits);
+    saveEdits(newEdits);
+    recomputeCruce(newEdits);
+    setEditOpen(false);
+  };
+
+  const hasEditsCount = Object.keys(edits.exports).length + Object.keys(edits.ingresos).length;
 
   const filteredData = useMemo(() => {
     let rows: (CruceRow | SinCruceRow | IngresoPendienteRow)[] = [];
@@ -274,16 +575,12 @@ export default function CruceCaliral() {
     const pendienteEnvases = pendienteRows.reduce((s, r) => s + r.envases, 0);
     const conProblema = cruceRows.filter(r => r.diffEnvases < 0).length;
     return {
-      totalIngresoEnvases,
-      totalIngresoKg,
+      totalIngresoEnvases, totalIngresoKg,
       totalIngresos: ingresoMap.size,
       exportConCruce: cruceRows.length,
       exportSinCruce: sinCruceRows.length,
-      totalCruceExpEnvases,
-      totalCruceIngresoEnvases,
-      totalSinCruceEnvases,
-      pendienteCount: pendienteRows.length,
-      pendienteEnvases,
+      totalCruceExpEnvases, totalCruceIngresoEnvases, totalSinCruceEnvases,
+      pendienteCount: pendienteRows.length, pendienteEnvases,
       cotesVinculados: new Set(cruceRows.flatMap(r => r.ingresoCotes)).size,
       conProblema,
     };
@@ -299,27 +596,28 @@ export default function CruceCaliral() {
 
     const cruceSheet = cruceRows.map(r => ({
       'COTE Export': r.exp.nroCote,
-      'Trámite Export': r.exp.nroTramite,
+      'Tramite Export': r.exp.nroTramite,
       'Fecha Export': r.exp.fechaTramite?.split('T')[0] || '',
-      'País': r.exp.paisDestino,
+      'Pais': r.exp.paisDestino,
       'Producto Export': r.exp.denominacionMercaderia,
       'Cajas Exportadas': r.envasesExp,
       'Kg Exportados': r.kgExp,
       'COTEs de Ingreso': r.ingresoCotes.join(', '),
-      'Trámites Ingreso': r.ingresoAgg.map(a => a.tramite).join(', '),
+      'Tramites Ingreso': r.ingresoAgg.map(a => a.tramite).join(', '),
       'Cortes Ingreso': r.ingresoAgg.flatMap(a => a.cortes).filter((v, i, a) => a.indexOf(v) === i).join(', '),
       'Cajas Ingresadas': r.totalEnvasesIngreso,
       'Kg Ingresados': r.totalKgIngreso,
       'Diferencia Cajas': r.diffEnvases,
+      'Vinculacion': r.isManualLink ? 'Manual' : 'Automatica (observaciones)',
       'Estado': r.diffEnvases < 0 ? 'ERROR: mas cajas exportadas que ingresadas' : r.diffEnvases === 0 ? 'OK' : 'Sobran cajas ingresadas (normal)',
     }));
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(cruceSheet), 'Con Cruce');
 
     const sinSheet = sinCruceRows.map(r => ({
       'COTE': r.exp.nroCote,
-      'Trámite': r.exp.nroTramite,
+      'Tramite': r.exp.nroTramite,
       'Fecha': r.exp.fechaTramite?.split('T')[0] || '',
-      'País': r.exp.paisDestino,
+      'Pais': r.exp.paisDestino,
       'Producto': r.exp.denominacionMercaderia,
       'Cajas': r.exp.cantidadEnvases || 0,
       'Kg': r.exp.pesoNeto || 0,
@@ -329,11 +627,12 @@ export default function CruceCaliral() {
 
     const pendSheet = pendienteRows.map(r => ({
       'COTE': r.cote,
-      'Trámite': r.tramite,
+      'Tramite': r.tramite,
       'Fecha': r.fecha?.split('T')[0] || '',
       'Producto': r.producto,
       'Cajas': r.envases,
-      'Kg': r.pesoNeto,
+      'Kg Neto': r.pesoNeto,
+      'Kg Bruto': r.pesoBruto,
       'Cortes': r.cortes.join(', '),
     }));
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(pendSheet), 'Pendientes');
@@ -341,16 +640,15 @@ export default function CruceCaliral() {
     XLSX.writeFile(wb, `cruce_caliral_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
-  // Diff badge for CAJAS
   function diffBadgeEnvases(diff: number) {
     if (diff === 0) return <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full"><CheckCircle2 className="h-3 w-3" />0</span>;
     if (diff < 0) {
-      // NEGATIVO = se exportaron mas cajas de las que ingresaron = ERROR
       return <span className="inline-flex items-center gap-1 text-xs font-bold text-red-700 bg-red-50 px-2 py-0.5 rounded-full"><PackageMinus className="h-3 w-3" />{diff} cajas</span>;
     }
-    // POSITIVO = sobran cajas ingresadas vs exportadas = normal (parte fue a otra export)
     return <span className="inline-flex items-center text-xs font-bold text-sky-700 bg-sky-50 px-2 py-0.5 rounded-full">+{diff} cajas</span>;
   }
+
+  const isEdited = (type: 'export' | 'ingreso', id: string) => type === 'export' ? !!edits.exports[id] : !!edits.ingresos[id];
 
   if (loading) return <div className="p-6 space-y-4"><h2 className="text-2xl font-bold text-slate-800">Cruce Caliral</h2><Skeleton className="h-96" /></div>;
 
@@ -363,9 +661,21 @@ export default function CruceCaliral() {
           Cruce Caliral
           <span className="text-sm font-normal text-slate-400 ml-2">Trazabilidad por cajas (envases)</span>
         </h2>
-        <Button variant="outline" size="sm" onClick={handleExport}>
-          <Download className="h-4 w-4 mr-2" />Exportar Excel
-        </Button>
+        <div className="flex gap-2">
+          {hasEditsCount > 0 && (
+            <Button variant="ghost" size="sm" className="text-amber-600" onClick={() => {
+              if (confirm('Limpiar todas las ediciones manuales?')) {
+                const clean = { exports: {}, ingresos: {} };
+                setEdits(clean); saveEdits(clean); recomputeCruce(clean);
+              }
+            }}>
+              <RotateCcw className="h-4 w-4 mr-1" />Limpiar ediciones ({hasEditsCount})
+            </Button>
+          )}
+          <Button variant="outline" size="sm" onClick={handleExport}>
+            <Download className="h-4 w-4 mr-2" />Exportar Excel
+          </Button>
+        </div>
       </div>
 
       {/* KPI Cards */}
@@ -407,7 +717,7 @@ export default function CruceCaliral() {
       {/* Info banner */}
       <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs text-slate-600">
         <p className="font-medium text-slate-700 mb-1">Como funciona el cruce</p>
-        <p>Se extraen los COTEs de ingreso desde las <b>observaciones</b> de cada exportacion. Se comparan las <b>cajas (envases)</b> exportadas contra las cajas que ingresaron con esos COTEs a Caliral. La diferencia negativa (roja) indica que se exportaron mas cajas de las que ingresaron, lo cual es un error. La diferencia positiva (azul) es normal: significa que no todas las cajas de esos COTEs fueron en esa exportacion (pueden ir en otra o estar pendientes). La mayoria de las exportaciones no tienen COTE de ingreso en observaciones, por lo que aparecen en &quot;Sin COTE de ingreso&quot;.</p>
+        <p>Se extraen los COTEs de ingreso desde las <b>observaciones</b> de cada exportacion. Se comparan las <b>cajas (envases)</b> exportadas contra las cajas que ingresaron con esos COTEs a Caliral. La diferencia negativa (roja) indica que se exportaron mas cajas de las que ingresaron, lo cual es un error. La diferencia positiva (azul) es normal: significa que no todas las cajas de esos COTEs fueron en esa exportacion (pueden ir en otra o estar pendientes). La mayoria de las exportaciones no tienen COTE de ingreso en observaciones, por lo que aparecen en &quot;Sin COTE de ingreso&quot;. <b>Podes editar cualquier registro haciendo click en el lapiz</b>. Las ediciones se guardan en el navegador.</p>
       </div>
 
       {/* Sub-tabs + Filters */}
@@ -460,14 +770,14 @@ export default function CruceCaliral() {
                   <th className="px-3 py-3">COTEs de Ingreso</th>
                   <th className="px-3 py-3 text-right hidden lg:table-cell">Cajas Ingreso</th>
                   <th className="px-3 py-3 text-right">Diff. Cajas</th>
-                  <th className="px-3 py-3 w-10"></th>
+                  <th className="px-3 py-3 w-20"></th>
                 </tr>
               </thead>
               <tbody>
                 {pageData.length === 0 ? (
                   <tr><td colSpan={10} className="text-center py-10 text-slate-400">No se encontraron registros</td></tr>
                 ) : (pageData as CruceRow[]).map(r => (
-                  <tr key={r.exp.id} className={`border-b cursor-pointer ${r.diffEnvases < 0 ? 'hover:bg-red-50/40' : 'hover:bg-orange-50/40'}`} onClick={() => { setDetailRow(r); setDetailOpen(true); }}>
+                  <tr key={r.exp.id} className={`border-b cursor-pointer ${r.diffEnvases < 0 ? 'hover:bg-red-50/40' : 'hover:bg-orange-50/40'} ${isEdited('export', r.exp.id) ? 'bg-violet-50/30' : ''}`} onClick={() => { setDetailRow(r); setDetailOpen(true); }}>
                     <td className="px-3 py-2.5 text-xs font-mono font-medium text-blue-700">{r.exp.nroCote}</td>
                     <td className="px-3 py-2.5 text-xs font-mono">{r.exp.nroTramite}</td>
                     <td className="px-3 py-2.5 text-xs">{fd(r.exp.fechaTramite)}</td>
@@ -476,6 +786,7 @@ export default function CruceCaliral() {
                     <td className="px-3 py-2.5 text-xs text-right font-mono font-medium">{r.envasesExp.toLocaleString('es-UY')}</td>
                     <td className="px-3 py-2.5 text-xs">
                       <div className="flex flex-wrap gap-1">
+                        {r.isManualLink && <span className="inline-block bg-violet-100 text-violet-800 text-[9px] font-bold px-1 py-0.5 rounded">MANUAL</span>}
                         {r.ingresoCotes.map(c => (
                           <span key={c} className="inline-block bg-emerald-100 text-emerald-800 text-[10px] font-mono px-1.5 py-0.5 rounded">{c}</span>
                         ))}
@@ -486,7 +797,16 @@ export default function CruceCaliral() {
                     </td>
                     <td className="px-3 py-2.5 text-xs text-right font-mono hidden lg:table-cell">{r.totalEnvasesIngreso.toLocaleString('es-UY')}</td>
                     <td className="px-3 py-2.5 text-right">{diffBadgeEnvases(r.diffEnvases)}</td>
-                    <td className="px-3 py-2.5 text-center"><Eye className="h-4 w-4 text-slate-400 inline" /></td>
+                    <td className="px-3 py-2.5 text-center" onClick={e => e.stopPropagation()}>
+                      <div className="flex items-center justify-center gap-1">
+                        <button className="p-1 rounded hover:bg-slate-100" title="Editar" onClick={() => openExportEdit(r)}>
+                          <Pencil className={`h-3.5 w-3.5 ${isEdited('export', r.exp.id) ? 'text-violet-600' : 'text-slate-400'}`} />
+                        </button>
+                        <button className="p-1 rounded hover:bg-slate-100" title="Ver detalle" onClick={() => { setDetailRow(r); setDetailOpen(true); }}>
+                          <Eye className="h-3.5 w-3.5 text-slate-400" />
+                        </button>
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -505,14 +825,14 @@ export default function CruceCaliral() {
                   <th className="px-3 py-3 text-right">Cajas</th>
                   <th className="px-3 py-3 text-right hidden md:table-cell">Kg</th>
                   <th className="px-3 py-3 hidden md:table-cell">Observaciones</th>
-                  <th className="px-3 py-3 w-10"></th>
+                  <th className="px-3 py-3 w-20"></th>
                 </tr>
               </thead>
               <tbody>
                 {pageData.length === 0 ? (
                   <tr><td colSpan={9} className="text-center py-10 text-slate-400">No se encontraron registros</td></tr>
                 ) : (pageData as SinCruceRow[]).map(r => (
-                  <tr key={r.exp.id} className="border-b hover:bg-amber-50/40 cursor-pointer" onClick={() => { setDetailRow(r); setDetailOpen(true); }}>
+                  <tr key={r.exp.id} className={`border-b hover:bg-amber-50/40 cursor-pointer ${isEdited('export', r.exp.id) ? 'bg-violet-50/30' : ''}`} onClick={() => { setDetailRow(r); setDetailOpen(true); }}>
                     <td className="px-3 py-2.5 text-xs font-mono font-medium text-amber-700">{r.exp.nroCote}</td>
                     <td className="px-3 py-2.5 text-xs font-mono">{r.exp.nroTramite}</td>
                     <td className="px-3 py-2.5 text-xs">{fd(r.exp.fechaTramite)}</td>
@@ -521,7 +841,16 @@ export default function CruceCaliral() {
                     <td className="px-3 py-2.5 text-xs text-right font-mono">{(r.exp.cantidadEnvases || 0).toLocaleString('es-UY')}</td>
                     <td className="px-3 py-2.5 text-xs text-right font-mono hidden md:table-cell">{(r.exp.pesoNeto || 0).toLocaleString('es-UY')}</td>
                     <td className="px-3 py-2.5 text-xs text-slate-400 hidden md:table-cell max-w-[250px] truncate">{r.obsPreview || '-'}</td>
-                    <td className="px-3 py-2.5 text-center"><Eye className="h-4 w-4 text-slate-400 inline" /></td>
+                    <td className="px-3 py-2.5 text-center" onClick={e => e.stopPropagation()}>
+                      <div className="flex items-center justify-center gap-1">
+                        <button className="p-1 rounded hover:bg-slate-100" title="Editar" onClick={() => openExportEdit(r)}>
+                          <Pencil className={`h-3.5 w-3.5 ${isEdited('export', r.exp.id) ? 'text-violet-600' : 'text-slate-400'}`} />
+                        </button>
+                        <button className="p-1 rounded hover:bg-slate-100" title="Ver detalle" onClick={() => { setDetailRow(r); setDetailOpen(true); }}>
+                          <Eye className="h-3.5 w-3.5 text-slate-400" />
+                        </button>
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -539,14 +868,14 @@ export default function CruceCaliral() {
                   <th className="px-3 py-3 hidden md:table-cell">Cortes</th>
                   <th className="px-3 py-3 text-right">Cajas</th>
                   <th className="px-3 py-3 text-right hidden md:table-cell">Kg</th>
-                  <th className="px-3 py-3 w-10"></th>
+                  <th className="px-3 py-3 w-20"></th>
                 </tr>
               </thead>
               <tbody>
                 {pageData.length === 0 ? (
                   <tr><td colSpan={8} className="text-center py-10 text-slate-400">No se encontraron registros</td></tr>
                 ) : (pageData as IngresoPendienteRow[]).map(r => (
-                  <tr key={r.cote} className="border-b hover:bg-orange-50/40 cursor-pointer" onClick={() => { setDetailRow(r); setDetailOpen(true); }}>
+                  <tr key={r.cote} className={`border-b hover:bg-orange-50/40 cursor-pointer ${isEdited('ingreso', r.cote) ? 'bg-violet-50/30' : ''}`} onClick={() => { setDetailRow(r); setDetailOpen(true); }}>
                     <td className="px-3 py-2.5 text-xs font-mono font-medium text-orange-700">{r.cote}</td>
                     <td className="px-3 py-2.5 text-xs font-mono">{r.tramite}</td>
                     <td className="px-3 py-2.5 text-xs">{fd(r.fecha)}</td>
@@ -554,7 +883,16 @@ export default function CruceCaliral() {
                     <td className="px-3 py-2.5 text-xs hidden md:table-cell max-w-[200px] truncate">{r.cortes.join(', ')}</td>
                     <td className="px-3 py-2.5 text-xs text-right font-mono">{r.envases.toLocaleString('es-UY')}</td>
                     <td className="px-3 py-2.5 text-xs text-right font-mono hidden md:table-cell">{r.pesoNeto.toLocaleString('es-UY')}</td>
-                    <td className="px-3 py-2.5 text-center"><Eye className="h-4 w-4 text-slate-400 inline" /></td>
+                    <td className="px-3 py-2.5 text-center" onClick={e => e.stopPropagation()}>
+                      <div className="flex items-center justify-center gap-1">
+                        <button className="p-1 rounded hover:bg-slate-100" title="Editar" onClick={() => openIngresoEdit(r)}>
+                          <Pencil className={`h-3.5 w-3.5 ${isEdited('ingreso', r.cote) ? 'text-violet-600' : 'text-slate-400'}`} />
+                        </button>
+                        <button className="p-1 rounded hover:bg-slate-100" title="Ver detalle" onClick={() => { setDetailRow(r); setDetailOpen(true); }}>
+                          <Eye className="h-3.5 w-3.5 text-slate-400" />
+                        </button>
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -570,7 +908,7 @@ export default function CruceCaliral() {
         </div>
       </CardContent></Card>
 
-      {/* Detail Sheet */}
+      {/* Detail Sheet (read-only) */}
       <Sheet open={detailOpen} onOpenChange={setDetailOpen}>
         <SheetContent className="sm:max-w-xl overflow-y-auto">
           {detailRow && detailType === 'cruce' && (() => {
@@ -578,7 +916,6 @@ export default function CruceCaliral() {
             return (<>
               <SheetHeader><SheetTitle className="flex items-center gap-2"><ArrowLeftRight className="h-5 w-5 text-orange-600" />Cruce — Exportacion COTE {r.exp.nroCote}</SheetTitle></SheetHeader>
               <div className="mt-6 space-y-4 text-sm">
-                {/* Export data */}
                 <div>
                   <p className="text-xs font-bold text-blue-600 uppercase tracking-wide mb-2">Datos de la Exportacion</p>
                   <div className="bg-blue-50/50 rounded-lg p-3 space-y-1">
@@ -602,8 +939,11 @@ export default function CruceCaliral() {
                     ))}
                   </div>
                 </div>
-
-                {/* Balance por CAJAS */}
+                {r.isManualLink && (
+                  <div className="bg-violet-50 border border-violet-200 rounded-lg p-2 text-xs text-violet-800">
+                    <p className="font-bold">Vinculacion manual de COTEs de ingreso</p>
+                  </div>
+                )}
                 <div className={`rounded-lg p-4 ${r.diffEnvases < 0 ? 'bg-red-50 border border-red-200' : 'bg-slate-50'}`}>
                   <p className="text-xs font-bold text-slate-600 uppercase tracking-wide mb-3">Balance por Cajas (Envases)</p>
                   <div className="grid grid-cols-3 gap-3 text-center">
@@ -621,8 +961,6 @@ export default function CruceCaliral() {
                     <p className="text-center text-xs text-sky-600 mt-2">Sobran {r.diffEnvases} cajas de ingreso vs esta exportacion (pueden corresponder a otras exportaciones o estar pendientes).</p>
                   )}
                 </div>
-
-                {/* Kg como referencia */}
                 <div className="bg-slate-50/50 rounded-lg p-3">
                   <p className="text-[10px] text-slate-400 uppercase tracking-wide mb-1">Referencia en Kg</p>
                   <div className="flex justify-between text-xs">
@@ -630,8 +968,6 @@ export default function CruceCaliral() {
                     <span className="text-slate-500">Kg exportados: <span className="font-medium text-slate-700">{r.kgExp.toLocaleString('es-UY')} kg</span></span>
                   </div>
                 </div>
-
-                {/* Ingreso COTEs detail */}
                 <div>
                   <p className="text-xs font-bold text-emerald-600 uppercase tracking-wide mb-2">COTEs de Ingreso ({r.ingresoCotes.length})</p>
                   <div className="space-y-2">
@@ -650,8 +986,6 @@ export default function CruceCaliral() {
                     ))}
                   </div>
                 </div>
-
-                {/* Not found */}
                 {r.ingresoCotesNotFound.length > 0 && (
                   <div>
                     <p className="text-xs font-bold text-red-600 uppercase tracking-wide mb-2">COTEs no encontrados en ingresos Caliral</p>
@@ -662,8 +996,6 @@ export default function CruceCaliral() {
                     </div>
                   </div>
                 )}
-
-                {/* Observaciones */}
                 {r.exp.observaciones && (
                   <div>
                     <p className="text-xs font-bold text-slate-600 uppercase tracking-wide mb-2">Observaciones</p>
@@ -680,17 +1012,14 @@ export default function CruceCaliral() {
               <SheetHeader><SheetTitle className="flex items-center gap-2"><Unlink className="h-5 w-5 text-amber-600" />Sin COTE de Ingreso — {r.exp.nroCote}</SheetTitle></SheetHeader>
               <div className="mt-6 space-y-4 text-sm">
                 <div className="bg-amber-50 rounded-lg p-3 text-xs text-amber-800">
-                  <p className="font-bold mb-1">Esta exportacion no tiene COTE de ingreso referenciado en sus observaciones.</p>
-                  <p>Para vincularla, se necesita agregar los COTEs de ingreso correspondientes en el campo &quot;Observaciones&quot; del tramite de exportacion.</p>
+                  <p className="font-bold mb-1">Esta exportacion no tiene COTE de ingreso referenciado.</p>
+                  <p>Hace click en <b>Editar</b> para agregar los COTEs de ingreso y la cantidad de cajas manualmente.</p>
                 </div>
                 <div className="space-y-1">
                   {[
-                    ['COTE', r.exp.nroCote],
-                    ['Nro. Tramite', String(r.exp.nroTramite)],
-                    ['Fecha', fd(r.exp.fechaTramite)],
-                    ['Pais', r.exp.paisDestino],
-                    ['Producto', r.exp.denominacionMercaderia],
-                    ['Corte', r.exp.corte],
+                    ['COTE', r.exp.nroCote], ['Nro. Tramite', String(r.exp.nroTramite)],
+                    ['Fecha', fd(r.exp.fechaTramite)], ['Pais', r.exp.paisDestino],
+                    ['Producto', r.exp.denominacionMercaderia], ['Corte', r.exp.corte],
                     ['Contenedor', (r.exp as Record<string, unknown>).contenedorSerieNro as string || '-'],
                     ['Cajas (envases)', String(r.exp.cantidadEnvases ?? '-')],
                     ['Peso Neto', r.exp.pesoNeto ? String(r.exp.pesoNeto) + ' kg' : '-'],
@@ -724,12 +1053,9 @@ export default function CruceCaliral() {
                     <p className="text-xs font-bold text-emerald-600 uppercase tracking-wide mb-2">Detalle del Ingreso</p>
                     <div className="space-y-1">
                       {[
-                        ['COTE', agg.cote],
-                        ['Nro. Tramite', String(agg.tramite)],
-                        ['Fecha', fd(agg.fecha)],
-                        ['Producto', agg.producto],
-                        ['Cortes', agg.cortes.join(', ')],
-                        ['Lineas', String(agg.lineCount)],
+                        ['COTE', agg.cote], ['Nro. Tramite', String(agg.tramite)],
+                        ['Fecha', fd(agg.fecha)], ['Producto', agg.producto],
+                        ['Cortes', agg.cortes.join(', ')], ['Lineas', String(agg.lineCount)],
                         ['Cajas (envases)', agg.envases.toLocaleString('es-UY')],
                         ['Peso Bruto', agg.pesoBruto.toLocaleString('es-UY') + ' kg'],
                         ['Peso Neto', agg.pesoNeto.toLocaleString('es-UY') + ' kg'],
@@ -751,7 +1077,7 @@ export default function CruceCaliral() {
                             <tbody>
                               {agg.lines.map((l, i) => (
                                 <tr key={i} className="border-t">
-                                  <td className="px-2 py-1">{l.idLinea ?? i + 1}</td>
+                                  <td className="px-2 py-1">{(l as Record<string, unknown>).idLinea ?? i + 1}</td>
                                   <td className="px-2 py-1">{l.corte}</td>
                                   <td className="px-2 py-1 text-right font-mono">{l.cantidadEnvases ?? '-'}</td>
                                   <td className="px-2 py-1 text-right font-mono">{l.pesoNeto ? l.pesoNeto.toLocaleString('es-UY') : '-'}</td>
@@ -767,6 +1093,149 @@ export default function CruceCaliral() {
               </div>
             </>);
           })()}
+        </SheetContent>
+      </Sheet>
+
+      {/* EDIT SHEET */}
+      <Sheet open={editOpen} onOpenChange={setEditOpen}>
+        <SheetContent className="sm:max-w-xl overflow-y-auto">
+          {editTarget?.type === 'export' && (
+            <>
+              <SheetHeader>
+                <SheetTitle className="flex items-center gap-2">
+                  <Pencil className="h-5 w-5 text-violet-600" />
+                  Editar Exportacion — {(editTarget.row as CruceRow | SinCruceRow).exp.nroCote}
+                </SheetTitle>
+              </SheetHeader>
+              <div className="mt-6 space-y-4 text-sm">
+                {/* Datos generales */}
+                <div>
+                  <p className="text-xs font-bold text-blue-600 uppercase tracking-wide mb-2">Datos de la Exportacion</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div><FieldLabel>COTE</FieldLabel><Input value={ef_nroCote} onChange={e => setEf_nroCote(e.target.value)} className="h-8 text-xs" /></div>
+                    <div><FieldLabel>Tramite</FieldLabel><Input type="number" value={ef_nroTramite} onChange={e => setEf_nroTramite(e.target.value)} className="h-8 text-xs" /></div>
+                    <div><FieldLabel>Pais</FieldLabel><Input value={ef_pais} onChange={e => setEf_pais(e.target.value)} className="h-8 text-xs" /></div>
+                    <div><FieldLabel>Producto</FieldLabel><Input value={ef_producto} onChange={e => setEf_producto(e.target.value)} className="h-8 text-xs" /></div>
+                    <div><FieldLabel>Corte</FieldLabel><Input value={ef_corte} onChange={e => setEf_corte(e.target.value)} className="h-8 text-xs" /></div>
+                    <div><FieldLabel>Cajas (envases)</FieldLabel><Input type="number" value={ef_cajas} onChange={e => setEf_cajas(e.target.value)} className="h-8 text-xs font-mono" /></div>
+                    <div><FieldLabel>Peso Neto (kg)</FieldLabel><Input type="number" value={ef_pesoNeto} onChange={e => setEf_pesoNeto(e.target.value)} className="h-8 text-xs font-mono" /></div>
+                    <div><FieldLabel>Peso Bruto (kg)</FieldLabel><Input type="number" value={ef_pesoBruto} onChange={e => setEf_pesoBruto(e.target.value)} className="h-8 text-xs font-mono" /></div>
+                  </div>
+                </div>
+
+                {/* Logistica */}
+                <div>
+                  <p className="text-xs font-bold text-slate-600 uppercase tracking-wide mb-2">Logistica</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div><FieldLabel>Transporte</FieldLabel><Input value={ef_transporte} onChange={e => setEf_transporte(e.target.value)} className="h-8 text-xs" /></div>
+                    <div><FieldLabel>Contenedor</FieldLabel><Input value={ef_contenedor} onChange={e => setEf_contenedor(e.target.value)} className="h-8 text-xs" /></div>
+                    <div><FieldLabel>Precinto</FieldLabel><Input value={ef_precinto} onChange={e => setEf_precinto(e.target.value)} className="h-8 text-xs" /></div>
+                    <div><FieldLabel>Matricula Camion</FieldLabel><Input value={ef_matricula} onChange={e => setEf_matricula(e.target.value)} className="h-8 text-xs" /></div>
+                    <div><FieldLabel>Cert. Sanitario</FieldLabel><Input value={ef_certSanitario} onChange={e => setEf_certSanitario(e.target.value)} className="h-8 text-xs" /></div>
+                    <div><FieldLabel>Estab. Certificador</FieldLabel><Input value={ef_estabCertif} onChange={e => setEf_estabCertif(e.target.value)} className="h-8 text-xs" /></div>
+                  </div>
+                </div>
+
+                {/* Observaciones */}
+                <div>
+                  <FieldLabel>Observaciones</FieldLabel>
+                  <textarea value={ef_observaciones} onChange={e => setEf_observaciones(e.target.value)} className="w-full min-h-[80px] text-xs border rounded-md p-2 font-mono resize-y" placeholder="Escribir observaciones... los COTEs de ingreso se detectan automaticamente (formato P12345)" />
+                </div>
+
+                {/* COTEs de Ingreso MANUALES */}
+                <div className="border-2 border-violet-200 rounded-lg p-4 bg-violet-50/50">
+                  <p className="text-xs font-bold text-violet-700 uppercase tracking-wide mb-2">
+                    COTEs de Ingreso (vinculacion manual)
+                  </p>
+                  <p className="text-[11px] text-slate-500 mb-3">Agrega los COTEs de ingreso que corresponden a esta exportacion y la cantidad de cajas usadas de cada uno. Esto reemplaza la deteccion automatica desde observaciones.</p>
+
+                  {ef_manualCotes.length > 0 && (
+                    <div className="space-y-2 mb-3">
+                      {ef_manualCotes.map(mc => (
+                        <div key={mc.cote} className="flex items-center gap-2 bg-white border rounded-md px-3 py-2">
+                          <span className="font-mono text-sm font-bold text-emerald-700 flex-1">{mc.cote}</span>
+                          <span className="text-xs text-slate-500">cajas:</span>
+                          <Input type="number" value={mc.cajas} onChange={e => {
+                            const val = parseInt(e.target.value) || 0;
+                            setEf_manualCotes(prev => prev.map(c => c.cote === mc.cote ? { ...c, cajas: val } : c));
+                          }} className="w-20 h-7 text-xs text-right font-mono" />
+                          <button onClick={() => removeManualCote(mc.cote)} className="p-1 rounded hover:bg-red-100"><Trash2 className="h-3.5 w-3.5 text-red-500" /></button>
+                        </div>
+                      ))}
+                      <div className="text-xs text-right text-slate-500">
+                        Total cajas ingreso: <span className="font-bold text-slate-800">{ef_manualCotes.reduce((s, c) => s + c.cajas, 0).toLocaleString('es-UY')}</span>
+                        {ef_cajas && (
+                          <> — Exportadas: <span className="font-bold text-blue-700">{parseInt(ef_cajas || '0').toLocaleString('es-UY')}</span>
+                          {' '}(diff: <span className={ef_manualCotes.reduce((s, c) => s + c.cajas, 0) - parseInt(ef_cajas || '0') < 0 ? 'text-red-600' : 'text-emerald-600'}>{(ef_manualCotes.reduce((s, c) => s + c.cajas, 0) - parseInt(ef_cajas || '0')).toLocaleString('es-UY')}</span>)</>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex gap-2 items-end">
+                    <div className="flex-1">
+                      <FieldLabel>COTE de ingreso</FieldLabel>
+                      <Input value={ef_newCote} onChange={e => setEf_newCote(e.target.value.toUpperCase())} placeholder="P12345" className="h-8 text-xs font-mono" onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addManualCote(); } }} />
+                    </div>
+                    <div className="w-24">
+                      <FieldLabel>Cajas</FieldLabel>
+                      <Input type="number" value={ef_newCoteCajas} onChange={e => setEf_newCoteCajas(e.target.value)} placeholder="0" className="h-8 text-xs font-mono text-right" onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addManualCote(); } }} />
+                    </div>
+                    <Button size="sm" variant="outline" onClick={addManualCote} className="h-8 mb-0.5" disabled={!ef_newCote.trim() || !ef_newCoteCajas}>
+                      <Plus className="h-3.5 w-3.5 mr-1" />Agregar
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div className="flex gap-2 pt-2 border-t">
+                  <Button size="sm" onClick={saveExportEdit} className="flex-1">
+                    <Save className="h-4 w-4 mr-2" />Guardar cambios
+                  </Button>
+                  {isEdited('export', editTarget.id) && (
+                    <Button size="sm" variant="outline" onClick={clearExportEdit} className="text-red-600 border-red-200 hover:bg-red-50">
+                      <RotateCcw className="h-4 w-4 mr-1" />Revertir
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
+
+          {editTarget?.type === 'ingreso' && (
+            <>
+              <SheetHeader>
+                <SheetTitle className="flex items-center gap-2">
+                  <Pencil className="h-5 w-5 text-violet-600" />
+                  Editar Ingreso — {editTarget.id}
+                </SheetTitle>
+              </SheetHeader>
+              <div className="mt-6 space-y-4 text-sm">
+                <div>
+                  <p className="text-xs font-bold text-emerald-600 uppercase tracking-wide mb-2">Datos del Ingreso</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div><FieldLabel>Cajas (envases)</FieldLabel><Input type="number" value={ei_cajas} onChange={e => setEi_cajas(e.target.value)} className="h-8 text-xs font-mono" /></div>
+                    <div><FieldLabel>Peso Neto (kg)</FieldLabel><Input type="number" value={ei_pesoNeto} onChange={e => setEi_pesoNeto(e.target.value)} className="h-8 text-xs font-mono" /></div>
+                    <div><FieldLabel>Peso Bruto (kg)</FieldLabel><Input type="number" value={ei_pesoBruto} onChange={e => setEi_pesoBruto(e.target.value)} className="h-8 text-xs font-mono" /></div>
+                    <div><FieldLabel>Producto</FieldLabel><Input value={ei_producto} onChange={e => setEi_producto(e.target.value)} className="h-8 text-xs" /></div>
+                  </div>
+                </div>
+                <div className="bg-amber-50 rounded-lg p-2 text-[11px] text-amber-800">
+                  Se editan los valores agregados del COTE. Las lineas individuales del JSON original no se modifican.
+                </div>
+                <div className="flex gap-2 pt-2 border-t">
+                  <Button size="sm" onClick={saveIngresoEdit} className="flex-1">
+                    <Save className="h-4 w-4 mr-2" />Guardar cambios
+                  </Button>
+                  {isEdited('ingreso', editTarget.id) && (
+                    <Button size="sm" variant="outline" onClick={clearIngresoEdit} className="text-red-600 border-red-200 hover:bg-red-50">
+                      <RotateCcw className="h-4 w-4 mr-1" />Revertir
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
         </SheetContent>
       </Sheet>
     </div>
