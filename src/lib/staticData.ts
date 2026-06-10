@@ -2,6 +2,20 @@ import type { Shipment } from './types';
 
 const shipmentsCache: { data: Shipment[]; loaded: boolean } = { data: [], loaded: false };
 
+async function ensureLoaded() {
+  if (!shipmentsCache.loaded) {
+    const r = await fetch('data/shipments.json');
+    shipmentsCache.data = await r.json();
+    shipmentsCache.loaded = true;
+  }
+}
+
+export async function getCotes(): Promise<string[]> {
+  await ensureLoaded();
+  const cotes = [...new Set(shipmentsCache.data.map(s => s.nroCote).filter(Boolean) as string[])].sort();
+  return cotes;
+}
+
 export async function fetchAnalytics() {
   const r = await fetch('data/analytics.json');
   return r.json();
@@ -15,17 +29,14 @@ export async function fetchShipments(params: {
   producto?: string;
   destino?: string;
   tipo?: string;
+  cote?: string;
   fechaDesde?: string;
   fechaHasta?: string;
 }) {
-  if (!shipmentsCache.loaded) {
-    const r = await fetch('data/shipments.json');
-    shipmentsCache.data = await r.json();
-    shipmentsCache.loaded = true;
-  }
+  await ensureLoaded();
 
   let filtered = [...shipmentsCache.data];
-  const { page = 1, limit = 20, search = '', pais, producto, destino, tipo, fechaDesde, fechaHasta } = params;
+  const { page = 1, limit = 20, search = '', pais, producto, destino, tipo, cote, fechaDesde, fechaHasta } = params;
 
   if (search) {
     const s = search.toLowerCase();
@@ -43,6 +54,7 @@ export async function fetchShipments(params: {
   if (producto) filtered = filtered.filter(sh => sh.denominacionMercaderia?.includes(producto));
   if (destino) filtered = filtered.filter(sh => sh.nombreEstablecimientoDestino?.includes(destino));
   if (tipo) filtered = filtered.filter(sh => sh.tipo === tipo);
+  if (cote) filtered = filtered.filter(sh => sh.nroCote === cote);
   if (fechaDesde) filtered = filtered.filter(sh => sh.fechaTramite >= new Date(fechaDesde).toISOString());
   if (fechaHasta) filtered = filtered.filter(sh => sh.fechaTramite <= new Date(fechaHasta + 'T23:59:59').toISOString());
 

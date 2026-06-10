@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useAppStore } from '@/store/useAppStore';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -7,8 +7,8 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Search, X, ChevronLeft, ChevronRight, Eye } from 'lucide-react';
-import { fetchShipments, fetchAnalytics } from '@/lib/staticData';
+import { Search, X, ChevronLeft, ChevronRight, Eye, FileCheck } from 'lucide-react';
+import { fetchShipments, fetchAnalytics, getCotes } from '@/lib/staticData';
 import type { Shipment } from '@/lib/types';
 
 function fd(d: string) { if (!d) return '-'; return new Date(d).toLocaleDateString('es-UY',{day:'2-digit',month:'2-digit',year:'numeric'}); }
@@ -22,6 +22,10 @@ export default function ShipmentTable() {
   const [detailOpen, setDetailOpen] = useState(false);
   const [selected, setSelected] = useState<Shipment | null>(null);
   const [options, setOptions] = useState({ paises: [] as string[], productos: [] as string[], destinos: [] as string[] });
+  const [cotes, setCotes] = useState<string[]>([]);
+  const [coteOpen, setCoteOpen] = useState(false);
+  const [coteSearch, setCoteSearch] = useState('');
+  const coteInputRef = useRef<HTMLInputElement>(null);
   const limit = 20;
 
   useEffect(() => {
@@ -32,6 +36,7 @@ export default function ShipmentTable() {
         destinos: (a.byDestino||[]).map((d:{destino:string})=>d.destino).filter(Boolean),
       });
     });
+    getCotes().then(c => setCotes(c));
   }, []);
 
   useEffect(() => {
@@ -52,6 +57,16 @@ export default function ShipmentTable() {
   const totalPages = Math.ceil(total / limit);
   const hasFilters = search || Object.values(filters).some(Boolean);
 
+  const filteredCotes = coteSearch
+    ? cotes.filter(c => c.toLowerCase().includes(coteSearch.toLowerCase()))
+    : cotes;
+
+  const handleCoteSelect = (cote: string) => {
+    setFilter('cote', filters.cote === cote ? '' : cote);
+    setCoteOpen(false);
+    setCoteSearch('');
+  };
+
   return (
     <div className="p-6 space-y-4 max-w-[1400px]">
       <h2 className="text-2xl font-bold text-slate-800">Envíos</h2>
@@ -63,7 +78,64 @@ export default function ShipmentTable() {
           </div>
           {hasFilters && <Button variant="ghost" size="sm" onClick={clearFilters}><X className="h-4 w-4 mr-1"/>Limpiar</Button>}
         </div>
-        <div className="flex flex-wrap gap-3">
+        <div className="flex flex-wrap gap-3 items-center">
+          {/* COTE searchable dropdown */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => { setCoteOpen(!coteOpen); setCoteSearch(''); }}
+              className={`flex h-9 w-[220px] items-center justify-between rounded-md border px-3 py-2 text-sm whitespace-nowrap truncate ${filters.cote ? 'border-emerald-500 bg-emerald-50 text-emerald-700 font-medium' : 'border-input bg-background text-muted-foreground'}`}
+            >
+              <span className="truncate">
+                {filters.cote ? (
+                  <span className="flex items-center gap-2">
+                    <FileCheck className="h-3.5 w-3.5 shrink-0" />
+                    {filters.cote}
+                  </span>
+                ) : 'Filtrar por COTE'}
+              </span>
+              {filters.cote && <X className="h-3 w-3 ml-1 shrink-0" onClick={e => { e.stopPropagation(); setFilter('cote', ''); }} />}
+            </button>
+            {coteOpen && (
+              <div className="absolute z-50 mt-1 w-[280px] rounded-md border bg-popover shadow-lg">
+                <div className="p-2 border-b">
+                  <div className="relative">
+                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                    <Input
+                      ref={coteInputRef}
+                      placeholder="Buscar COTE..."
+                      value={coteSearch}
+                      onChange={e => setCoteSearch(e.target.value)}
+                      className="h-8 pl-8 text-sm"
+                      autoFocus
+                    />
+                  </div>
+                </div>
+                <div className="max-h-[240px] overflow-y-auto">
+                  {filteredCotes.length === 0 ? (
+                    <p className="text-sm text-slate-400 p-3 text-center">Sin resultados</p>
+                  ) : (
+                    filteredCotes.map(c => (
+                      <button
+                        key={c}
+                        type="button"
+                        onClick={() => handleCoteSelect(c)}
+                        className={`w-full text-left px-3 py-1.5 text-sm hover:bg-accent transition-colors ${filters.cote === c ? 'bg-emerald-50 text-emerald-700 font-medium' : ''}`}
+                      >
+                        {c}
+                      </button>
+                    ))
+                  )}
+                </div>
+                {filteredCotes.length > 0 && (
+                  <div className="p-2 border-t text-xs text-slate-400 text-center">
+                    {filteredCotes.length} COTE{filteredCotes.length !== 1 ? 's' : ''} encontrado{filteredCotes.length !== 1 ? 's' : ''}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
           <Select value={filters.pais} onValueChange={v=>setFilter('pais',v)}><SelectTrigger className="w-[200px]"><SelectValue placeholder="País Destino"/></SelectTrigger><SelectContent>{options.paises.map(p=><SelectItem key={p} value={p}>{p}</SelectItem>)}</SelectContent></Select>
           <Select value={filters.producto} onValueChange={v=>setFilter('producto',v)}><SelectTrigger className="w-[220px]"><SelectValue placeholder="Producto"/></SelectTrigger><SelectContent>{options.productos.map(p=><SelectItem key={p} value={p}>{p}</SelectItem>)}</SelectContent></Select>
           <Select value={filters.destino} onValueChange={v=>setFilter('destino',v)}><SelectTrigger className="w-[200px]"><SelectValue placeholder="Destino"/></SelectTrigger><SelectContent>{options.destinos.map(d=><SelectItem key={d} value={d}>{d}</SelectItem>)}</SelectContent></Select>

@@ -12,6 +12,7 @@ interface AppState {
     producto: string;
     destino: string;
     tipo: string;
+    cote: string;
     fechaDesde: string;
     fechaHasta: string;
   };
@@ -26,9 +27,9 @@ export const useAppStore = create<AppState>((set) => ({
   setActiveTab: (tab) => set({ activeTab: tab }),
   search: '',
   setSearch: (search) => set({ search }),
-  filters: { pais: '', producto: '', destino: '', tipo: '', fechaDesde: '', fechaHasta: '' },
+  filters: { pais: '', producto: '', destino: '', tipo: '', cote: '', fechaDesde: '', fechaHasta: '' },
   setFilter: (key, value) => set((s) => ({ filters: { ...s.filters, [key]: value } })),
-  clearFilters: () => set({ filters: { pais: '', producto: '', destino: '', tipo: '', fechaDesde: '', fechaHasta: '' }, search: '' }),
+  clearFilters: () => set({ filters: { pais: '', producto: '', destino: '', tipo: '', cote: '', fechaDesde: '', fechaHasta: '' }, search: '' }),
   selectedShipmentId: null,
   setSelectedShipmentId: (id) => set({ selectedShipmentId: id }),
 }));
