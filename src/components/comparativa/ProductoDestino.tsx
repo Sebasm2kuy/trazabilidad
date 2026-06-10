@@ -1,6 +1,6 @@
 'use client';
-import { useEffect, useState, useMemo } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useEffect, useState, useMemo, useRef } from 'react';
+import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -21,6 +21,7 @@ export default function ProductoDestino() {
   const [searchProd, setSearchProd] = useState('');
   const [sortMode, setSortMode] = useState<'total' | 'name'>('total');
   const [topN, setTopN] = useState(30);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     (async () => {
@@ -48,23 +49,19 @@ export default function ProductoDestino() {
       prodTotals.set(prod, (prodTotals.get(prod) || 0) + kg);
     }
 
-    // Sort destinations by total desc
     const dests = [...destTotals.entries()]
       .sort((a, b) => b[1] - a[1])
       .map(([d]) => d);
 
-    // Sort products
     const prods = [...prodTotals.entries()]
       .sort((a, b) => sortMode === 'total' ? b[1] - a[1] : a[0].localeCompare(b[0]))
       .map(([p]) => p);
 
-    // Filter
     const sd = searchDest.toLowerCase();
     const sp = searchProd.toLowerCase();
     const filteredDests = sd ? dests.filter(d => d.toLowerCase().includes(sd)) : dests;
     const filteredProds = sp ? prods.filter(p => p.toLowerCase().includes(sp)) : prods.slice(0, topN);
 
-    // Recompute prod totals for filtered
     const filteredProdTotals = new Map<string, number>();
     for (const prod of filteredProds) {
       const row = map.get(prod);
@@ -76,7 +73,6 @@ export default function ProductoDestino() {
       filteredProdTotals.set(prod, sum);
     }
 
-    // Find max cell value for heatmap
     let maxVal = 0;
     for (const prod of filteredProds) {
       const row = map.get(prod);
@@ -87,7 +83,6 @@ export default function ProductoDestino() {
       }
     }
 
-    // Column totals for filtered view
     const colTotals = new Map<string, number>();
     for (const dest of filteredDests) {
       let sum = 0;
@@ -115,22 +110,24 @@ export default function ProductoDestino() {
 
   if (loading) {
     return (
-      <div className="p-6 space-y-4 max-w-[1600px]">
+      <div className="p-6 space-y-4">
         <h2 className="text-2xl font-bold text-slate-800">Comparativa Producto x Destino</h2>
         <Skeleton className="h-96 w-full" />
       </div>
     );
   }
 
+  const colCount = matrix.filteredDests.length;
+
   return (
-    <div className="p-6 space-y-4 max-w-[1800px]">
+    <div className="p-6 space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <h2 className="text-2xl font-bold text-slate-800">Comparativa Producto x Destino</h2>
         <Button
           variant="outline"
           size="sm"
-          onClick={() => {
-            const XLSX = require('xlsx');
+          onClick={async () => {
+            const XLSX = await import('xlsx');
             const rows: Record<string, string | number>[] = [];
             for (const prod of matrix.filteredProds) {
               const row: Record<string, string | number> = { Producto: prod };
@@ -187,60 +184,89 @@ export default function ProductoDestino() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardContent className="p-0 overflow-x-auto">
-          <table className="w-full text-xs border-collapse">
-            <thead>
-              <tr className="bg-slate-800 text-white sticky top-0">
-                <th className="px-3 py-2.5 text-left sticky left-0 bg-slate-800 z-10 min-w-[180px]">Producto</th>
-                {matrix.filteredDests.map(d => (
-                  <th key={d} className="px-2 py-2.5 text-right whitespace-nowrap font-normal" title={d}>
-                    {d.length > 18 ? d.substring(0, 16) + '…' : d}
-                  </th>
-                ))}
-                <th className="px-3 py-2.5 text-right bg-emerald-700 font-bold sticky right-0 z-10 min-w-[80px]">TOTAL</th>
-              </tr>
-            </thead>
-            <tbody>
-              {matrix.filteredProds.map((prod, i) => {
-                const row = matrix.map.get(prod);
-                const rowTotal = matrix.filteredProdTotals.get(prod) || 0;
-                return (
-                  <tr key={prod} className={i % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}>
-                    <td className="px-3 py-1.5 text-left font-medium text-slate-700 max-w-[220px] truncate sticky left-0 bg-inherit z-[5]" title={prod}>
-                      {prod}
-                    </td>
-                    {matrix.filteredDests.map(dest => {
-                      const val = row?.get(dest) || 0;
-                      return (
-                        <td key={dest} className={`px-2 py-1.5 text-right font-mono whitespace-nowrap ${heatColor(val, matrix.maxVal)}`}>
-                          {val > 0 ? fmt(val) : '-'}
-                        </td>
-                      );
-                    })}
-                    <td className="px-3 py-1.5 text-right font-bold font-mono bg-slate-100 text-slate-800 sticky right-0 z-[5]">
-                      {fmt(rowTotal)}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-            <tfoot>
-              <tr className="bg-slate-200 font-bold text-slate-800">
-                <td className="px-3 py-2 sticky left-0 bg-slate-200 z-[5]">TOTAL</td>
-                {matrix.filteredDests.map(dest => (
-                  <td key={dest} className="px-2 py-2 text-right font-mono">
-                    {fmt(matrix.colTotals.get(dest) || 0)}
+      {/* Independent scroll container — breaks out of parent ScrollArea constraints */}
+      <div
+        ref={scrollRef}
+        className="border rounded-lg bg-white shadow-sm overflow-auto"
+        style={{ maxHeight: 'calc(100vh - 240px)' }}
+      >
+        <table
+          className="text-xs border-collapse"
+          style={{ minWidth: 200 + colCount * 90 + 100 }}
+        >
+          <thead>
+            <tr className="bg-slate-800 text-white">
+              <th
+                className="px-3 py-2.5 text-left sticky left-0 bg-slate-800 z-20 border-r border-slate-600"
+                style={{ minWidth: 200, maxWidth: 260 }}
+              >
+                Producto
+              </th>
+              {matrix.filteredDests.map(d => (
+                <th
+                  key={d}
+                  className="px-2 py-2.5 text-right whitespace-nowrap font-normal"
+                  style={{ minWidth: 80 }}
+                  title={d}
+                >
+                  {d.length > 20 ? d.substring(0, 18) + '…' : d}
+                </th>
+              ))}
+              <th
+                className="px-3 py-2.5 text-right bg-emerald-700 font-bold sticky right-0 z-20 border-l border-emerald-800"
+                style={{ minWidth: 100 }}
+              >
+                TOTAL
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {matrix.filteredProds.map((prod, i) => {
+              const row = matrix.map.get(prod);
+              const rowTotal = matrix.filteredProdTotals.get(prod) || 0;
+              const bg = i % 2 === 0 ? 'bg-white' : 'bg-slate-50/70';
+              return (
+                <tr key={prod} className={`${bg} hover:bg-emerald-50/50`}>
+                  <td
+                    className={`px-3 py-1.5 text-left font-medium text-slate-700 sticky left-0 z-10 border-r border-slate-200 ${bg}`}
+                    style={{ minWidth: 200, maxWidth: 260 }}
+                    title={prod}
+                  >
+                    <span className="block truncate">{prod}</span>
                   </td>
-                ))}
-                <td className="px-3 py-2 text-right font-mono text-emerald-700 bg-emerald-100 sticky right-0 z-[5]">
-                  {fmt(matrix.grandTotal)}
+                  {matrix.filteredDests.map(dest => {
+                    const val = row?.get(dest) || 0;
+                    return (
+                      <td
+                        key={dest}
+                        className={`px-2 py-1.5 text-right font-mono whitespace-nowrap ${heatColor(val, matrix.maxVal)}`}
+                      >
+                        {val > 0 ? fmt(val) : <span className="text-slate-200">—</span>}
+                      </td>
+                    );
+                  })}
+                  <td className="px-3 py-1.5 text-right font-bold font-mono bg-slate-100 text-slate-800 sticky right-0 z-10 border-l border-slate-300">
+                    {fmt(rowTotal)}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+          <tfoot>
+            <tr className="bg-slate-200 font-bold text-slate-800">
+              <td className="px-3 py-2 sticky left-0 bg-slate-200 z-10 border-r border-slate-300">TOTAL</td>
+              {matrix.filteredDests.map(dest => (
+                <td key={dest} className="px-2 py-2 text-right font-mono">
+                  {fmt(matrix.colTotals.get(dest) || 0)}
                 </td>
-              </tr>
-            </tfoot>
-          </table>
-        </CardContent>
-      </Card>
+              ))}
+              <td className="px-3 py-2 text-right font-mono text-emerald-700 bg-emerald-100 sticky right-0 z-10 border-l border-emerald-300">
+                {fmt(matrix.grandTotal)}
+              </td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
     </div>
   );
 }
