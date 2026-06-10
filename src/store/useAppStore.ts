@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-type Tab = 'dashboard' | 'envios' | 'trazabilidad' | 'analiticas' | 'importar' | 'nuevo';
+type Tab = 'dashboard' | 'envios' | 'trazabilidad' | 'comparativa' | 'analiticas' | 'importar' | 'nuevo';
 
 interface AppState {
   activeTab: Tab;

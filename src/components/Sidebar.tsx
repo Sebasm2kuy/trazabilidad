@@ -1,13 +1,14 @@
 'use client';
 
 import { useAppStore } from '@/store/useAppStore';
-import { LayoutDashboard, Truck, Search, BarChart3, Download, PlusCircle } from 'lucide-react';
+import { LayoutDashboard, Truck, Search, GitCompare, BarChart3, Download, PlusCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const tabs = [
   { id: 'dashboard' as const, label: 'Dashboard', icon: LayoutDashboard },
   { id: 'envios' as const, label: 'Envíos', icon: Truck },
   { id: 'trazabilidad' as const, label: 'Trazabilidad', icon: Search },
+  { id: 'comparativa' as const, label: 'Comparativa', icon: GitCompare },
   { id: 'analiticas' as const, label: 'Analíticas', icon: BarChart3 },
   { id: 'importar' as const, label: 'Importar / Exportar', icon: Download },
   { id: 'nuevo' as const, label: 'Nuevo Registro', icon: PlusCircle },
