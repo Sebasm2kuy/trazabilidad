@@ -4,10 +4,10 @@ import * as path from 'path';
 
 const prisma = new PrismaClient();
 
-interface Record {
-  'Nro. Trámite': number;
-  'Fecha del Trámite': string | null;
-  'Nro. de C.O.T.E.': string | null;
+interface Row {
+  'Nro. Trámite'?: number;
+  'Fecha del Trámite'?: string | null;
+  'Nro. de C.O.T.E.'?: string | null;
   'Nombre Médico Veterinario'?: string | null;
   'Nombre del Establecimiento Certificador'?: string | null;
   'Nombre Establecimiento Productor'?: string | null;
@@ -57,18 +57,22 @@ function cleanStr(val: string | null | undefined): string | null {
 
 async function main() {
   const dataPath = path.join(process.cwd(), 'db', 'seed_data.json');
-  const raw = fs.readFileSync(dataPath, 'utf-8');
-  const records: Record[] = JSON.parse(raw);
+  if (!fs.existsSync(dataPath)) {
+    console.error('No se encontró db/seed_data.json');
+    process.exit(1);
+  }
 
-  console.log(`Seeding ${records.length} records...`);
+  const records: Row[] = JSON.parse(fs.readFileSync(dataPath, 'utf-8'));
+  console.log(`Seeding ${records.length} registros...`);
 
-  const BATCH_SIZE = 200;
+  await prisma.shipment.deleteMany({});
+
+  const BATCH = 200;
   let inserted = 0;
-
-  for (let i = 0; i < records.length; i += BATCH_SIZE) {
-    const batch = records.slice(i, i + BATCH_SIZE);
-    const createMany = batch.map(r => ({
-      nroTramite: r['Nro. Trámite'],
+  for (let i = 0; i < records.length; i += BATCH) {
+    const batch = records.slice(i, i + BATCH);
+    const data = batch.map((r) => ({
+      nroTramite: r['Nro. Trámite'] || 0,
       fechaTramite: parseDate(r['Fecha del Trámite']) || new Date(),
       nroCote: cleanStr(r['Nro. de C.O.T.E.']) || '',
       nombreMedicoVeterinario: cleanStr(r['Nombre Médico Veterinario']),
@@ -107,15 +111,13 @@ async function main() {
       proceso: cleanStr(r['Proceso']),
       tipo: 'ingreso',
     }));
-
-    await prisma.shipment.createMany({ data: createMany, skipDuplicates: true });
-    inserted += createMany.length;
-    console.log(`  Inserted ${inserted}/${records.length}...`);
+    await prisma.shipment.createMany({ data });
+    inserted += data.length;
+    console.log(`  ${inserted}/${records.length}`);
   }
-
-  console.log(`Done! Total: ${inserted} records inserted.`);
+  console.log(`Listo! ${inserted} registros insertados.`);
 }
 
 main()
-  .catch(e => { console.error(e); process.exit(1); })
+  .catch((e) => { console.error(e.message); process.exit(1); })
   .finally(() => prisma.$disconnect());
