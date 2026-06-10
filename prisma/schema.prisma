@@ -1,0 +1,61 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Shipment {
+  id                            String   @id @default(cuid())
+  nroTramite                    Int
+  fechaTramite                  DateTime
+  nroCote                       String
+  nombreMedicoVeterinario       String?
+  nombreEstablecimientoCertif   String?
+  nombreEstablecimientoProd     String?
+  nroEstablecimientoProd        Int?
+  fechaEmitidoCote              DateTime?
+  temperaturaC                  Float?
+  tipoTransporte                String?
+  contenedorSerieNro            String?
+  matriculaCamion               String?
+  precinto1                     String?
+  nombreEstablecimientoDestino  String
+  tipoMovimiento                String?
+  observaciones                 String?
+  paisDestino                   String
+  baja                          String?
+  idLinea                       Int?
+  codigoEnvase                  Int?
+  denominacionMercaderia        String
+  corte                         String
+  pallets                       Int?
+  cantidadEnvases               Int?
+  pesoBruto                     Float?
+  pesoNeto                      Float?
+  nroCertificadoSanitario       String?
+  shipping                      String?
+  loteUsaCanada                 String?
+  lotesChina                    String?
+  fechaInicioFaena              DateTime?
+  fechaFinFaena                 DateTime?
+  fechaInicioProduccion         DateTime?
+  fechaFinProduccion            DateTime?
+  fechaInicioCongelacion        DateTime?
+  fechaFinCongelacion           DateTime?
+  proceso                       String?
+  tipo                          String   @default("ingreso")
+  createdAt                     DateTime @default(now())
+  updatedAt                     DateTime @updatedAt
+
+  @@index([nroTramite])
+  @@index([fechaTramite])
+  @@index([nroCote])
+  @@index([nombreEstablecimientoDestino])
+  @@index([paisDestino])
+  @@index([denominacionMercaderia])
+  @@index([corte])
+  @@index([tipo])
+}
