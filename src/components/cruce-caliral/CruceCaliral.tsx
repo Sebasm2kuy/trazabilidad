@@ -73,7 +73,7 @@ interface CruceRow {
   totalKgIngreso: number;
   envasesExp: number;
   kgExp: number;
-  diffEnvases: number;  // cajas exportadas - cajas ingresadas. Negativo = se exportó de más (error)
+  diffEnvases: number;  // cajas ingresadas - cajas exportadas. Positivo = sobran cajas ingresadas (normal). Negativo = se exportaron mas de las que ingresaron (error)
 }
 
 interface SinCruceRow {
@@ -191,7 +191,7 @@ export default function CruceCaliral() {
             totalKgIngreso,
             envasesExp,
             kgExp,
-            diffEnvases: envasesExp - totalEnvasesIngreso,
+            diffEnvases: totalEnvasesIngreso - envasesExp,
           });
           foundInCaliral.forEach(c => referencedCotes.add(c));
         } else {
