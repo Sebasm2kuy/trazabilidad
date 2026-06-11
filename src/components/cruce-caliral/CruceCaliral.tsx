@@ -319,7 +319,7 @@ export default function CruceCaliral() {
       }
 
       const foundInCaliral = cotesWithCajas.filter(c => iMap.has(c.cote));
-      const notInCaliral = cotesWithCotes.filter(c => !iMap.has(c.cote));
+      const notInCaliral = cotesWithCajas.filter(c => !iMap.has(c.cote));
 
       if (foundInCaliral.length > 0) {
         const aggs = foundInCaliral.map(c => iMap.get(c.cote)!);
