@@ -51,7 +51,8 @@ export default function ExportacionesTable() {
   const [coteOpen, setCoteOpen] = useState(false);
   const [coteSearch, setCoteSearch] = useState('');
   const [showCharts, setShowCharts] = useState(true);
-  const limit = 20;
+  const [showAll, setShowAll] = useState(false);
+  const limit = showAll ? 99999 : 20;
 
   useEffect(() => {
     (async () => {
@@ -116,6 +117,9 @@ export default function ExportacionesTable() {
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2"><Ship className="h-6 w-6 text-blue-600" />Exportaciones</h2>
         <div className="flex gap-2">
+          <Button variant={showAll ? 'default' : 'outline'} size="sm" onClick={() => setShowAll(!showAll)}>
+            {showAll ? 'Paginar (20)' : 'Ver todos'}
+          </Button>
           <Button variant="outline" size="sm" onClick={() => setShowCharts(!showCharts)}>
             {showCharts ? 'Ocultar' : 'Ver'} Resumen
           </Button>
@@ -224,6 +228,7 @@ export default function ExportacionesTable() {
             </tbody>
           </table>
         </div>
+        {!showAll && (
         <div className="flex items-center justify-between p-4 border-t">
           <p className="text-sm text-slate-500">{total} registros — Página {page} de {totalPages || 1}</p>
           <div className="flex gap-2">
@@ -231,6 +236,7 @@ export default function ExportacionesTable() {
             <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}><ChevronRight className="h-4 w-4" /></Button>
           </div>
         </div>
+        )}
       </CardContent></Card>
 
       <Sheet open={detailOpen} onOpenChange={setDetailOpen}>
