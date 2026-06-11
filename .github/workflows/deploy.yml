@@ -24,6 +24,8 @@ jobs:
           node-version: '20'
       - name: Install dependencies
         run: npm install
+      - name: Clear Next.js cache
+        run: rm -rf .next
       - name: Build static site
         run: npx next build
       - name: Add .nojekyll
