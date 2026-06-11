@@ -124,20 +124,48 @@ interface IngresoEdit {
   producto?: string;
 }
 
+interface ManualIngreso {
+  cote: string;
+  tramite: number;
+  fecha: string;
+  producto: string;
+  cortes: string[];
+  pesoNeto: number;
+  pesoBruto: number;
+  envases: number;
+}
+
+interface ManualExportacion {
+  id: string;
+  nroTramite: number;
+  fechaTramite: string;
+  nroCote: string;
+  paisDestino: string;
+  denominacionMercaderia: string;
+  corte: string;
+  pesoNeto: number | null;
+  pesoBruto: number | null;
+  cantidadEnvases: number | null;
+  observaciones: string | null;
+}
+
 interface EditsStore {
   exports: Record<string, ExportEdit>;
   ingresos: Record<string, IngresoEdit>;
+  ingresosManuales: ManualIngreso[];
+  exportacionesManuales: ManualExportacion[];
 }
 
 const EDITS_KEY = 'cruce_caliral_edits';
 
 function loadEdits(): EditsStore {
-  if (typeof window === 'undefined') return { exports: {}, ingresos: {} };
+  const def: EditsStore = { exports: {}, ingresos: {}, ingresosManuales: [], exportacionesManuales: [] };
+  if (typeof window === 'undefined') return def;
   try {
     const raw = localStorage.getItem(EDITS_KEY);
-    if (raw) return JSON.parse(raw);
+    if (raw) return { ...def, ...JSON.parse(raw) };
   } catch { /* ignore */ }
-  return { exports: {}, ingresos: {} };
+  return def;
 }
 
 function saveEdits(edits: EditsStore) {
@@ -399,7 +427,7 @@ export default function CruceCaliral() {
   const [pendienteRows, setPendienteRows] = useState<IngresoPendienteRow[]>([]);
 
   // --- Edit state ---
-  const [edits, setEdits] = useState<EditsStore>({ exports: {}, ingresos: {} });
+  const [edits, setEdits] = useState<EditsStore>({ exports: {}, ingresos: {}, ingresosManuales: [], exportacionesManuales: [] });
   const [editOpen, setEditOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<{ type: 'export' | 'ingreso'; id: string; row?: CruceRow | SinCruceRow | IngresoPendienteRow } | null>(null);
 
@@ -429,6 +457,27 @@ export default function CruceCaliral() {
   const [ei_pesoBruto, setEi_pesoBruto] = useState('');
   const [ei_producto, setEi_producto] = useState('');
 
+  // New manual ingreso form state
+  const [addIngresoOpen, setAddIngresoOpen] = useState(false);
+  const [ni_cote, setNi_cote] = useState('');
+  const [ni_tramite, setNi_tramite] = useState('');
+  const [ni_fecha, setNi_fecha] = useState('');
+  const [ni_producto, setNi_producto] = useState('');
+  const [ni_cajas, setNi_cajas] = useState('');
+  const [ni_pesoNeto, setNi_pesoNeto] = useState('');
+  const [ni_pesoBruto, setNi_pesoBruto] = useState('');
+
+  // New manual export form state
+  const [addExpOpen, setAddExpOpen] = useState(false);
+  const [ne_nroCote, setNe_nroCote] = useState('');
+  const [ne_nroTramite, setNe_nroTramite] = useState('');
+  const [ne_fecha, setNe_fecha] = useState('');
+  const [ne_pais, setNe_pais] = useState('');
+  const [ne_producto, setNe_producto] = useState('');
+  const [ne_corte, setNe_corte] = useState('');
+  const [ne_cajas, setNe_cajas] = useState('');
+  const [ne_pesoNeto, setNe_pesoNeto] = useState('');
+
   // Recompute cruce when edits change
   const recomputeCruce = useCallback((editsData: EditsStore) => {
     if (!cache.loaded) return;
@@ -438,13 +487,32 @@ export default function CruceCaliral() {
       const agg = iMap.get(cote);
       if (agg) iMap.set(cote, applyIngresoEdit(agg, edit));
     }
+    // Add manual ingresos
+    for (const mi of editsData.ingresosManuales || []) {
+      if (!iMap.has(mi.cote)) {
+        iMap.set(mi.cote, {
+          cote: mi.cote, tramite: mi.tramite, fecha: mi.fecha,
+          producto: mi.producto, cortes: mi.cortes || [],
+          pesoNeto: mi.pesoNeto, pesoBruto: mi.pesoBruto, envases: mi.envases,
+          lineCount: 1, lines: [],
+        });
+      }
+    }
     setIngresoMap(iMap);
 
-    // Apply export edits to cache exports
-    const editedExports = cache.exports.map(e => {
+    // Apply export edits to cache exports + manual exportaciones
+    const manualExps = (editsData.exportacionesManuales || []).map(me => ({
+      ...me,
+      id: me.id || `manual-${me.nroCote}`,
+      tipoTransporte: null, contenedorSerieNro: null, nroCertificadoSanitario: null,
+      nombreEstablecimientoCertif: null, precinto1: null, matriculaCamion: null,
+      fechaEmitidoCote: null, fechaInicioProduccion: null, fechaFinProduccion: null,
+      fechaInicioCongelacion: null, fechaFinCongelacion: null,
+    }));
+    const editedExports = [...cache.exports.map(e => {
       const edit = editsData.exports[e.id];
       return edit ? applyExportEdit(e, edit) : e;
-    });
+    }), ...manualExps];
 
     const cruces: CruceRow[] = [];
     const sinCruce: SinCruceRow[] = [];
@@ -667,7 +735,61 @@ export default function CruceCaliral() {
     setEditOpen(false);
   };
 
-  const hasEditsCount = Object.keys(edits.exports).length + Object.keys(edits.ingresos).length;
+  const saveNewIngreso = () => {
+    const cote = ni_cote.trim().toUpperCase();
+    if (!cote) return;
+    const newIngreso: ManualIngreso = {
+      cote,
+      tramite: parseInt(ni_tramite) || 0,
+      fecha: ni_fecha ? new Date(ni_fecha).toISOString() : new Date().toISOString(),
+      producto: ni_producto,
+      cortes: [],
+      envases: parseInt(ni_cajas) || 0,
+      pesoNeto: parseFloat(ni_pesoNeto) || 0,
+      pesoBruto: parseFloat(ni_pesoBruto) || 0,
+    };
+    const newEdits: EditsStore = {
+      ...edits,
+      ingresosManuales: [...(edits.ingresosManuales || []), newIngreso],
+    };
+    setEdits(newEdits);
+    saveEdits(newEdits);
+    recomputeCruce(newEdits);
+    setAddIngresoOpen(false);
+    setNi_cote(''); setNi_tramite(''); setNi_fecha('');
+    setNi_producto(''); setNi_cajas(''); setNi_pesoNeto(''); setNi_pesoBruto('');
+  };
+
+  const saveNewExp = () => {
+    const cote = ne_nroCote.trim().toUpperCase();
+    if (!cote) return;
+    const newExp: ManualExportacion = {
+      id: `manual-${cote}-${Date.now()}`,
+      nroTramite: parseInt(ne_nroTramite) || 0,
+      fechaTramite: ne_fecha ? new Date(ne_fecha).toISOString() : new Date().toISOString(),
+      nroCote: cote,
+      paisDestino: ne_pais,
+      denominacionMercaderia: ne_producto,
+      corte: ne_corte,
+      pesoNeto: ne_pesoNeto ? parseFloat(ne_pesoNeto) : null,
+      pesoBruto: null,
+      cantidadEnvases: ne_cajas ? parseInt(ne_cajas) : null,
+      observaciones: null,
+    };
+    const newEdits: EditsStore = {
+      ...edits,
+      exportacionesManuales: [...(edits.exportacionesManuales || []), newExp],
+    };
+    setEdits(newEdits);
+    saveEdits(newEdits);
+    recomputeCruce(newEdits);
+    setAddExpOpen(false);
+    setNe_nroCote(''); setNe_nroTramite(''); setNe_fecha('');
+    setNe_pais(''); setNe_producto(''); setNe_corte('');
+    setNe_cajas(''); setNe_pesoNeto('');
+  };
+
+  const hasEditsCount = Object.keys(edits.exports).length + Object.keys(edits.ingresos).length + (edits.ingresosManuales?.length || 0) + (edits.exportacionesManuales?.length || 0);
 
   const filteredData = useMemo(() => {
     let rows: (CruceRow | SinCruceRow | IngresoPendienteRow)[] = [];
@@ -810,16 +932,6 @@ export default function CruceCaliral() {
           <span className="text-sm font-normal text-slate-400 ml-2">Trazabilidad por cajas (envases)</span>
         </h2>
         <div className="flex gap-2">
-          {hasEditsCount > 0 && (
-            <Button variant="ghost" size="sm" className="text-amber-600" onClick={() => {
-              if (confirm('Limpiar todas las ediciones manuales?')) {
-                const clean = { exports: {}, ingresos: {} };
-                setEdits(clean); saveEdits(clean); recomputeCruce(clean);
-              }
-            }}>
-              <RotateCcw className="h-4 w-4 mr-1" />Limpiar ediciones ({hasEditsCount})
-            </Button>
-          )}
           <Button variant="outline" size="sm" onClick={handleExport}>
             <Download className="h-4 w-4 mr-2" />Exportar Excel
           </Button>
@@ -917,13 +1029,14 @@ export default function CruceCaliral() {
                   <th className="px-3 py-3 text-right">Cajas Exp.</th>
                   <th className="px-3 py-3">COTEs de Ingreso</th>
                   <th className="px-3 py-3 text-right hidden lg:table-cell">Cajas Ingreso</th>
+                  <th className="px-3 py-3 w-[100px]">Agregar COTE</th>
                   <th className="px-3 py-3 text-right">Diff. Cajas</th>
                   <th className="px-3 py-3 w-20"></th>
                 </tr>
               </thead>
               <tbody>
                 {pageData.length === 0 ? (
-                  <tr><td colSpan={10} className="text-center py-10 text-slate-400">No se encontraron registros</td></tr>
+                  <tr><td colSpan={11} className="text-center py-10 text-slate-400">No se encontraron registros</td></tr>
                 ) : (pageData as CruceRow[]).map(r => (
                   <tr key={r.exp.id} className={`border-b cursor-pointer ${r.diffEnvases < 0 ? 'hover:bg-red-50/40' : 'hover:bg-orange-50/40'} ${isEdited('export', r.exp.id) ? 'bg-violet-50/30' : ''}`} onClick={() => { setDetailRow(r); setDetailOpen(true); }}>
                     <td className="px-3 py-2.5 text-xs font-mono font-medium text-blue-700">{r.exp.nroCote}</td>
@@ -944,6 +1057,14 @@ export default function CruceCaliral() {
                       </div>
                     </td>
                     <td className="px-3 py-2.5 text-xs text-right font-mono hidden lg:table-cell">{r.totalEnvasesIngreso.toLocaleString('es-UY')}</td>
+                    <td className="px-3 py-2.5 text-center" onClick={e => e.stopPropagation()}>
+                      <button
+                        className="inline-flex items-center gap-1 text-[11px] font-semibold text-white bg-violet-600 hover:bg-violet-700 px-2.5 py-1 rounded-md transition-colors"
+                        onClick={() => openExportEdit(r)}
+                      >
+                        <Plus className="h-3 w-3" />Vincular COTE
+                      </button>
+                    </td>
                     <td className="px-3 py-2.5 text-right">{diffBadgeEnvases(r.diffEnvases)}</td>
                     <td className="px-3 py-2.5 text-center" onClick={e => e.stopPropagation()}>
                       <div className="flex items-center justify-center gap-1">
@@ -962,6 +1083,12 @@ export default function CruceCaliral() {
           )}
 
           {subTab === 'sincruce' && (
+            <>
+            <div className="mb-2">
+              <Button size="sm" className="text-xs" onClick={() => setAddExpOpen(true)}>
+                <Plus className="h-3.5 w-3.5 mr-1" />Agregar exportacion manual
+              </Button>
+            </div>
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b bg-slate-50 text-left text-xs text-slate-500 uppercase">
@@ -979,13 +1106,20 @@ export default function CruceCaliral() {
                 {pageData.length === 0 ? (
                   <tr><td colSpan={8} className="text-center py-10 text-slate-400">No se encontraron registros</td></tr>
                 ) : (pageData as SinCruceRow[]).map(r => (
-                  <SinCruceInlineRow key={r.exp.id} row={r} ingresoMap={ingresoMap} edits={edits} onSaved={(newEdits) => { setEdits(newEdits); saveEdits(newEdits); recomputeCruce(newEdits); }} onEditFull={() => openExportEdit(r)} isEdited={isEdited('export', r.exp.id)} />
+                  <SinCruceInlineRow key={r.exp.id} row={r} ingresoMap={ingresoMap} edits={edits} onSaved={(newEdits) => { setEdits(newEdits); saveEdits(newEdits); recomputeCruce(newEdits); }} onEditFull={() => openExportEdit(r)} isEditedFlag={isEdited('export', r.exp.id)} />
                 ))}
               </tbody>
             </table>
+            </>
           )}
 
           {subTab === 'pendientes' && (
+            <>
+            <div className="mb-2">
+              <Button size="sm" className="text-xs" onClick={() => setAddIngresoOpen(true)}>
+                <Plus className="h-3.5 w-3.5 mr-1" />Agregar COTE deposito manual
+              </Button>
+            </div>
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b bg-slate-50 text-left text-xs text-slate-500 uppercase">
@@ -1025,6 +1159,7 @@ export default function CruceCaliral() {
                 ))}
               </tbody>
             </table>
+            </>
           )}
         </div>
         <div className="flex items-center justify-between p-4 border-t">
@@ -1205,7 +1340,7 @@ export default function CruceCaliral() {
                             <tbody>
                               {agg.lines.map((l, i) => (
                                 <tr key={i} className="border-t">
-                                  <td className="px-2 py-1">{(l as Record<string, unknown>).idLinea ?? i + 1}</td>
+                                  <td className="px-2 py-1">{String((l as Record<string, unknown>).idLinea ?? i + 1)}</td>
                                   <td className="px-2 py-1">{l.corte}</td>
                                   <td className="px-2 py-1 text-right font-mono">{l.cantidadEnvases ?? '-'}</td>
                                   <td className="px-2 py-1 text-right font-mono">{l.pesoNeto ? l.pesoNeto.toLocaleString('es-UY') : '-'}</td>
@@ -1364,6 +1499,71 @@ export default function CruceCaliral() {
               </div>
             </>
           )}
+        </SheetContent>
+      </Sheet>
+
+      {/* NEW INGRESO SHEET */}
+      <Sheet open={addIngresoOpen} onOpenChange={setAddIngresoOpen}>
+        <SheetContent className="sm:max-w-md overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle className="flex items-center gap-2">
+              <Plus className="h-5 w-5 text-emerald-600" />
+              Agregar COTE deposito manual
+            </SheetTitle>
+          </SheetHeader>
+          <div className="mt-6 space-y-4 text-sm">
+            <div className="bg-orange-50 rounded-lg p-3 text-xs text-orange-800">
+              Agrega un COTE de ingreso/depósito que no existe en los datos originales. Se guardará como edición manual.
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div><FieldLabel>COTE</FieldLabel><Input value={ni_cote} onChange={e => setNi_cote(e.target.value.toUpperCase())} placeholder="P12345" className="h-8 text-xs font-mono" /></div>
+              <div><FieldLabel>Tramite</FieldLabel><Input type="number" value={ni_tramite} onChange={e => setNi_tramite(e.target.value)} className="h-8 text-xs font-mono" /></div>
+              <div><FieldLabel>Fecha</FieldLabel><Input type="date" value={ni_fecha} onChange={e => setNi_fecha(e.target.value)} className="h-8 text-xs" /></div>
+              <div><FieldLabel>Producto</FieldLabel><Input value={ni_producto} onChange={e => setNi_producto(e.target.value)} className="h-8 text-xs" /></div>
+              <div><FieldLabel>Cajas (envases)</FieldLabel><Input type="number" value={ni_cajas} onChange={e => setNi_cajas(e.target.value)} className="h-8 text-xs font-mono" /></div>
+              <div><FieldLabel>Kg Neto</FieldLabel><Input type="number" value={ni_pesoNeto} onChange={e => setNi_pesoNeto(e.target.value)} className="h-8 text-xs font-mono" /></div>
+              <div><FieldLabel>Kg Bruto</FieldLabel><Input type="number" value={ni_pesoBruto} onChange={e => setNi_pesoBruto(e.target.value)} className="h-8 text-xs font-mono" /></div>
+            </div>
+            <div className="flex gap-2 pt-2 border-t">
+              <Button size="sm" onClick={saveNewIngreso} className="flex-1" disabled={!ni_cote.trim()}>
+                <Save className="h-4 w-4 mr-2" />Guardar
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => setAddIngresoOpen(false)}>Cancelar</Button>
+            </div>
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      {/* NEW EXPORT SHEET */}
+      <Sheet open={addExpOpen} onOpenChange={setAddExpOpen}>
+        <SheetContent className="sm:max-w-md overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle className="flex items-center gap-2">
+              <Plus className="h-5 w-5 text-blue-600" />
+              Agregar exportacion manual
+            </SheetTitle>
+          </SheetHeader>
+          <div className="mt-6 space-y-4 text-sm">
+            <div className="bg-blue-50 rounded-lg p-3 text-xs text-blue-800">
+              Agrega una exportación que no existe en los datos originales. Se guardará como edición manual.
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div><FieldLabel>COTE Exportacion</FieldLabel><Input value={ne_nroCote} onChange={e => setNe_nroCote(e.target.value.toUpperCase())} placeholder="E12345" className="h-8 text-xs font-mono" /></div>
+              <div><FieldLabel>Tramite</FieldLabel><Input type="number" value={ne_nroTramite} onChange={e => setNe_nroTramite(e.target.value)} className="h-8 text-xs font-mono" /></div>
+              <div><FieldLabel>Fecha</FieldLabel><Input type="date" value={ne_fecha} onChange={e => setNe_fecha(e.target.value)} className="h-8 text-xs" /></div>
+              <div><FieldLabel>Pais</FieldLabel><Input value={ne_pais} onChange={e => setNe_pais(e.target.value)} className="h-8 text-xs" /></div>
+              <div><FieldLabel>Producto</FieldLabel><Input value={ne_producto} onChange={e => setNe_producto(e.target.value)} className="h-8 text-xs" /></div>
+              <div><FieldLabel>Corte</FieldLabel><Input value={ne_corte} onChange={e => setNe_corte(e.target.value)} className="h-8 text-xs" /></div>
+              <div><FieldLabel>Cajas (envases)</FieldLabel><Input type="number" value={ne_cajas} onChange={e => setNe_cajas(e.target.value)} className="h-8 text-xs font-mono" /></div>
+              <div><FieldLabel>Kg Neto</FieldLabel><Input type="number" value={ne_pesoNeto} onChange={e => setNe_pesoNeto(e.target.value)} className="h-8 text-xs font-mono" /></div>
+            </div>
+            <div className="flex gap-2 pt-2 border-t">
+              <Button size="sm" onClick={saveNewExp} className="flex-1" disabled={!ne_nroCote.trim()}>
+                <Save className="h-4 w-4 mr-2" />Guardar
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => setAddExpOpen(false)}>Cancelar</Button>
+            </div>
+          </div>
         </SheetContent>
       </Sheet>
     </div>
