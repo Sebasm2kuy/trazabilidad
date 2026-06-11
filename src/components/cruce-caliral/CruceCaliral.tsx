@@ -227,6 +227,154 @@ function FieldLabel({ children }: { children: React.ReactNode }) {
   return <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-wide mb-1">{children}</label>;
 }
 
+// --- Inline row for SinCruce with quick COTE linking ---
+function SinCruceInlineRow({ row, ingresoMap, edits, onSaved, onEditFull, isEditedFlag }: {
+  row: SinCruceRow;
+  ingresoMap: Map<string, IngresoAgg>;
+  edits: EditsStore;
+  onSaved: (edits: EditsStore) => void;
+  onEditFull: () => void;
+  isEditedFlag: boolean;
+}) {
+  const [expanding, setExpanding] = useState(false);
+  const [newCote, setNewCote] = useState('');
+  const [newCajas, setNewCajas] = useState('');
+
+  const currentManualCotes = edits.exports[row.exp.id]?.manualCotes || [];
+
+  const existingCotesInCaliral = [...ingresoMap.keys()].sort();
+
+  const handleQuickAdd = () => {
+    const cote = newCote.trim().toUpperCase();
+    const cajas = parseInt(newCajas) || 0;
+    if (!cote || cajas <= 0) return;
+    if (currentManualCotes.some(c => c.cote === cote)) return;
+
+    const updated = [...currentManualCotes, { cote, cajas }];
+    const newEdits: EditsStore = {
+      ...edits,
+      exports: {
+        ...edits.exports,
+        [row.exp.id]: { ...edits.exports[row.exp.id], manualCotes: updated },
+      },
+    };
+    onSaved(newEdits);
+    setNewCote('');
+    setNewCajas('');
+  };
+
+  const handleRemoveCote = (cote: string) => {
+    const updated = currentManualCotes.filter(c => c.cote !== cote);
+    const newEdits: EditsStore = { ...edits };
+    if (updated.length > 0) {
+      newEdits.exports = { ...newEdits.exports, [row.exp.id]: { ...newEdits.exports[row.exp.id], manualCotes: updated } };
+    } else {
+      const existing = { ...newEdits.exports[row.exp.id] };
+      delete existing.manualCotes;
+      if (Object.keys(existing).length > 0) {
+        newEdits.exports = { ...newEdits.exports, [row.exp.id]: existing };
+      } else {
+        const { [row.exp.id]: _, ...rest } = newEdits.exports;
+        newEdits.exports = rest;
+      }
+    }
+    onSaved(newEdits);
+  };
+
+  return (
+    <>
+      <tr className={`border-b hover:bg-amber-50/40 ${isEditedFlag ? 'bg-violet-50/30' : ''}`}>
+        <td className="px-3 py-2.5 text-xs font-mono font-medium text-amber-700">{row.exp.nroCote}</td>
+        <td className="px-3 py-2.5 text-xs font-mono">{row.exp.nroTramite}</td>
+        <td className="px-3 py-2.5 text-xs">{fd(row.exp.fechaTramite)}</td>
+        <td className="px-3 py-2.5 text-xs">{row.exp.paisDestino}</td>
+        <td className="px-3 py-2.5 text-xs hidden lg:table-cell max-w-[200px] truncate">{row.exp.denominacionMercaderia}</td>
+        <td className="px-3 py-2.5 text-xs text-right font-mono font-medium">{(row.exp.cantidadEnvases || 0).toLocaleString('es-UY')}</td>
+        <td className="px-3 py-2.5 text-xs text-right font-mono hidden md:table-cell">{(row.exp.pesoNeto || 0).toLocaleString('es-UY')}</td>
+        <td className="px-3 py-2.5 text-center">
+          {currentManualCotes.length > 0 ? (
+            <div className="flex flex-wrap gap-1 justify-center">
+              {currentManualCotes.map(mc => {
+                const found = ingresoMap.get(mc.cote);
+                return (
+                  <span key={mc.cote} className={`inline-flex items-center gap-0.5 text-[10px] font-mono px-1.5 py-0.5 rounded ${found ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-700'}`}>
+                    {mc.cote} <span className="opacity-60">({mc.cajas})</span>
+                    <button className="ml-0.5 hover:text-red-600" onClick={() => handleRemoveCote(mc.cote)}><X className="h-2.5 w-2.5" /></button>
+                  </span>
+                );
+              })}
+              <button className="text-[10px] text-blue-600 hover:text-blue-800 font-medium px-1" onClick={() => setExpanding(!expanding)}>
+                {expanding ? 'cerrar' : '+ mas'}
+              </button>
+            </div>
+          ) : (
+            <button
+              className="inline-flex items-center gap-1 text-[11px] font-semibold text-white bg-violet-600 hover:bg-violet-700 px-2.5 py-1 rounded-md transition-colors"
+              onClick={() => setExpanding(!expanding)}
+            >
+              <Plus className="h-3 w-3" />Vincular COTE
+            </button>
+          )}
+        </td>
+      </tr>
+      {expanding && (
+        <tr className="border-b bg-violet-50/50">
+          <td colSpan={8} className="px-3 py-3">
+            <div className="flex flex-wrap items-end gap-2">
+              <div className="flex-1 min-w-[140px]">
+                <FieldLabel>COTE de Ingreso</FieldLabel>
+                <Input
+                  placeholder="Ej: P12345"
+                  value={newCote}
+                  onChange={e => setNewCote(e.target.value.toUpperCase())}
+                  className="h-8 text-xs font-mono"
+                  list={`cote-sug-${row.exp.id}`}
+                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleQuickAdd(); } }}
+                />
+                <datalist id={`cote-sug-${row.exp.id}`}>
+                  {existingCotesInCaliral.filter(c => !currentManualCotes.some(mc => mc.cote === c)).map(c => (
+                    <option key={c} value={c}>{c} — {ingresoMap.get(c)?.producto || ''} ({ingresoMap.get(c)?.envases || 0} cajas)</option>
+                  ))}
+                </datalist>
+              </div>
+              <div className="w-[90px]">
+                <FieldLabel>Cajas</FieldLabel>
+                <Input
+                  type="number"
+                  min="1"
+                  placeholder="0"
+                  value={newCajas}
+                  onChange={e => setNewCajas(e.target.value)}
+                  className="h-8 text-xs font-mono"
+                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleQuickAdd(); } }}
+                />
+              </div>
+              <Button size="sm" className="h-8 text-xs" onClick={handleQuickAdd} disabled={!newCote.trim() || !(parseInt(newCajas) > 0)}>
+                <Plus className="h-3 w-3 mr-1" />Agregar
+              </Button>
+              <Button size="sm" variant="outline" className="h-8 text-xs" onClick={onEditFull}>
+                <Pencil className="h-3 w-3 mr-1" />Editar todo
+              </Button>
+              <Button size="sm" variant="ghost" className="h-8 text-xs" onClick={() => setExpanding(false)}>
+                <X className="h-3 w-3" />
+              </Button>
+            </div>
+            {currentManualCotes.length > 0 && (
+              <div className="mt-2 flex items-center gap-2 text-[11px] text-slate-600">
+                <span>Total vinculacion manual: <b>{currentManualCotes.reduce((s, c) => s + c.cajas, 0)}</b> cajas ingreso</span>
+                <span className="text-slate-300">|</span>
+                <span>Cajas exp.: <b>{row.exp.cantidadEnvases || 0}</b></span>
+                <span className="text-slate-300">|</span>
+                <span>Diff: <b className={currentManualCotes.reduce((s, c) => s + c.cajas, 0) - (row.exp.cantidadEnvases || 0) < 0 ? 'text-red-600' : 'text-emerald-600'}>{(currentManualCotes.reduce((s, c) => s + c.cajas, 0) - (row.exp.cantidadEnvases || 0)).toLocaleString('es-UY')}</b></span>
+              </div>
+            )}
+          </td>
+        </tr>
+      )}
+    </>
+  );
+}
+
 // --- Component ---
 export default function CruceCaliral() {
   const [loading, setLoading] = useState(true);
@@ -817,41 +965,21 @@ export default function CruceCaliral() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b bg-slate-50 text-left text-xs text-slate-500 uppercase">
-                  <th className="px-3 py-3">COTE</th>
+                  <th className="px-3 py-3">COTE Exp.</th>
                   <th className="px-3 py-3">Tramite</th>
                   <th className="px-3 py-3">Fecha</th>
                   <th className="px-3 py-3">Pais</th>
                   <th className="px-3 py-3 hidden lg:table-cell">Producto</th>
-                  <th className="px-3 py-3 text-right">Cajas</th>
+                  <th className="px-3 py-3 text-right">Cajas Exp.</th>
                   <th className="px-3 py-3 text-right hidden md:table-cell">Kg</th>
-                  <th className="px-3 py-3 hidden md:table-cell">Observaciones</th>
-                  <th className="px-3 py-3 w-20"></th>
+                  <th className="px-3 py-3 w-[160px]">Agregar COTE Ingreso</th>
                 </tr>
               </thead>
               <tbody>
                 {pageData.length === 0 ? (
-                  <tr><td colSpan={9} className="text-center py-10 text-slate-400">No se encontraron registros</td></tr>
+                  <tr><td colSpan={8} className="text-center py-10 text-slate-400">No se encontraron registros</td></tr>
                 ) : (pageData as SinCruceRow[]).map(r => (
-                  <tr key={r.exp.id} className={`border-b hover:bg-amber-50/40 cursor-pointer ${isEdited('export', r.exp.id) ? 'bg-violet-50/30' : ''}`} onClick={() => { setDetailRow(r); setDetailOpen(true); }}>
-                    <td className="px-3 py-2.5 text-xs font-mono font-medium text-amber-700">{r.exp.nroCote}</td>
-                    <td className="px-3 py-2.5 text-xs font-mono">{r.exp.nroTramite}</td>
-                    <td className="px-3 py-2.5 text-xs">{fd(r.exp.fechaTramite)}</td>
-                    <td className="px-3 py-2.5 text-xs">{r.exp.paisDestino}</td>
-                    <td className="px-3 py-2.5 text-xs hidden lg:table-cell max-w-[200px] truncate">{r.exp.denominacionMercaderia}</td>
-                    <td className="px-3 py-2.5 text-xs text-right font-mono">{(r.exp.cantidadEnvases || 0).toLocaleString('es-UY')}</td>
-                    <td className="px-3 py-2.5 text-xs text-right font-mono hidden md:table-cell">{(r.exp.pesoNeto || 0).toLocaleString('es-UY')}</td>
-                    <td className="px-3 py-2.5 text-xs text-slate-400 hidden md:table-cell max-w-[250px] truncate">{r.obsPreview || '-'}</td>
-                    <td className="px-3 py-2.5 text-center" onClick={e => e.stopPropagation()}>
-                      <div className="flex items-center justify-center gap-1">
-                        <button className="p-1 rounded hover:bg-slate-100" title="Editar" onClick={() => openExportEdit(r)}>
-                          <Pencil className={`h-3.5 w-3.5 ${isEdited('export', r.exp.id) ? 'text-violet-600' : 'text-slate-400'}`} />
-                        </button>
-                        <button className="p-1 rounded hover:bg-slate-100" title="Ver detalle" onClick={() => { setDetailRow(r); setDetailOpen(true); }}>
-                          <Eye className="h-3.5 w-3.5 text-slate-400" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
+                  <SinCruceInlineRow key={r.exp.id} row={r} ingresoMap={ingresoMap} edits={edits} onSaved={(newEdits) => { setEdits(newEdits); saveEdits(newEdits); recomputeCruce(newEdits); }} onEditFull={() => openExportEdit(r)} isEdited={isEdited('export', r.exp.id)} />
                 ))}
               </tbody>
             </table>
