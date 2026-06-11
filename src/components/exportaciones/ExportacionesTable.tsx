@@ -51,7 +51,7 @@ export default function ExportacionesTable() {
   const [coteOpen, setCoteOpen] = useState(false);
   const [coteSearch, setCoteSearch] = useState('');
   const [showCharts, setShowCharts] = useState(true);
-  const [showAll, setShowAll] = useState(false);
+  const [showAll, setShowAll] = useState(true);
   const limit = showAll ? 99999 : 20;
 
   useEffect(() => {
@@ -117,7 +117,7 @@ export default function ExportacionesTable() {
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2"><Ship className="h-6 w-6 text-blue-600" />Exportaciones</h2>
         <div className="flex gap-2">
-          <Button variant={showAll ? 'default' : 'outline'} size="sm" onClick={() => setShowAll(!showAll)}>
+          <Button variant={!showAll ? 'default' : 'outline'} size="sm" onClick={() => { setShowAll(!showAll); setPage(1); }}>
             {showAll ? 'Paginar (20)' : 'Ver todos'}
           </Button>
           <Button variant="outline" size="sm" onClick={() => setShowCharts(!showCharts)}>
@@ -206,7 +206,7 @@ export default function ExportacionesTable() {
             <thead><tr className="border-b bg-slate-50 text-left text-xs text-slate-500 uppercase">
               <th className="px-3 py-3">Trámite</th><th className="px-3 py-3">Fecha</th><th className="px-3 py-3">COTE</th>
               <th className="px-3 py-3">País</th><th className="px-3 py-3 hidden md:table-cell">Producto</th>
-              <th className="px-3 py-3 hidden lg:table-cell">Contenedor</th>
+              <th className="px-3 py-3 hidden xl:table-cell">Corte</th>
               <th className="px-3 py-3 text-right">Envases</th><th className="px-3 py-3 text-right">Peso Neto</th>
               <th className="px-3 py-3 w-12"></th>
             </tr></thead>
@@ -219,7 +219,7 @@ export default function ExportacionesTable() {
                   <td className="px-3 py-2.5 text-xs font-medium text-blue-700">{s.nroCote}</td>
                   <td className="px-3 py-2.5 text-xs">{s.paisDestino}</td>
                   <td className="px-3 py-2.5 text-xs hidden md:table-cell max-w-[180px] truncate">{s.denominacionMercaderia}</td>
-                  <td className="px-3 py-2.5 text-xs hidden lg:table-cell font-mono">{s.contenedorSerieNro || '-'}</td>
+                  <td className="px-3 py-2.5 text-xs hidden xl:table-cell">{s.corte}</td>
                   <td className="px-3 py-2.5 text-xs text-right font-mono">{s.cantidadEnvases ?? '-'}</td>
                   <td className="px-3 py-2.5 text-xs text-right font-mono">{s.pesoNeto ? s.pesoNeto.toLocaleString('es-UY') : '-'}</td>
                   <td className="px-3 py-2.5 text-center"><Eye className="h-4 w-4 text-slate-400 inline" /></td>
