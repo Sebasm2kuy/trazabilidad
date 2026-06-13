@@ -1192,7 +1192,7 @@ export default function CruceCaliral() {
       }
       return;
     }
-    const tramiteVal = parseInt(String(ni_tramite).trim()) || 0;
+    const tramiteVal = parseInt(String(ni_tramite).replace(/[^0-9]/g, '')) || 0;
     if (tramiteVal <= 0) {
       toast.error('Ingresa el numero de tramite');
       return;
@@ -1203,9 +1203,9 @@ export default function CruceCaliral() {
       fecha: ni_fecha ? new Date(ni_fecha).toISOString() : new Date().toISOString(),
       producto: ni_producto,
       cortes: [],
-      envases: parseInt(ni_cajas) || 0,
-      pesoNeto: parseFloat(ni_pesoNeto) || 0,
-      pesoBruto: parseFloat(ni_pesoBruto) || 0,
+      envases: parseInt(String(ni_cajas).replace(/[^0-9]/g, '')) || 0,
+      pesoNeto: parseFloat(String(ni_pesoNeto).replace(/[^0-9.,]/g, '')) || 0,
+      pesoBruto: parseFloat(String(ni_pesoBruto).replace(/[^0-9.,]/g, '')) || 0,
     };
     const newEdits: EditsStore = {
       ...edits,
@@ -1229,15 +1229,15 @@ export default function CruceCaliral() {
     if (!cote) return;
     const newExp: ManualExportacion = {
       id: `manual-${cote}-${Date.now()}`,
-      nroTramite: parseInt(ne_nroTramite) || 0,
+      nroTramite: parseInt(String(ne_nroTramite).replace(/[^0-9]/g, '')) || 0,
       fechaTramite: ne_fecha ? new Date(ne_fecha).toISOString() : new Date().toISOString(),
       nroCote: cote,
       paisDestino: ne_pais,
       denominacionMercaderia: ne_producto,
       corte: ne_corte,
-      pesoNeto: ne_pesoNeto ? parseFloat(ne_pesoNeto) : null,
+      pesoNeto: ne_pesoNeto ? parseFloat(String(ne_pesoNeto).replace(/[^0-9.,]/g, '')) : null,
       pesoBruto: null,
-      cantidadEnvases: ne_cajas ? parseInt(ne_cajas) : null,
+      cantidadEnvases: ne_cajas ? parseInt(String(ne_cajas).replace(/[^0-9]/g, '')) : null,
       observaciones: null,
     };
     const newEdits: EditsStore = {
