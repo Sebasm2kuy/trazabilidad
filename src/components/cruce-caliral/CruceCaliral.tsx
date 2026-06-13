@@ -1,15 +1,17 @@
 'use client';
-import { useEffect, useState, useMemo, useCallback } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Search, X, ChevronLeft, ChevronRight, Eye, Download, ArrowLeftRight, AlertTriangle, CheckCircle2, Link2, Unlink, PackageMinus, Pencil, Save, Plus, Trash2, RotateCcw, Upload } from 'lucide-react';
+import { Search, X, ChevronLeft, ChevronRight, Eye, Download, ArrowLeftRight, AlertTriangle, CheckCircle2, Link2, Unlink, PackageMinus, Package, Pencil, Save, Plus, Trash2, RotateCcw, Upload } from 'lucide-react';
 import { toast } from 'sonner';
 import { schedulePush } from '@/lib/googleSheets';
 import type { ExpRecord } from '@/lib/types';
+import type { StockLoad, StockCodigoAgg, StockPallet } from '@/lib/parseStockXls';
+import { buildStockAggMap } from '@/lib/parseStockXls';
 
 function fd(d: string | null | undefined) { if (!d) return '-'; return new Date(d).toLocaleDateString('es-UY', { day: '2-digit', month: '2-digit', year: 'numeric' }); }
 function fmt(n: number) { if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M'; if (n >= 1000) return (n / 1000).toFixed(1) + 'K'; return Math.round(n).toLocaleString('es-UY'); }
@@ -236,8 +238,10 @@ async function ensureData() {
 function extractIngresoCotes(obs: string | null | undefined, exportCote: string): string[] {
   if (!obs) return [];
   const allP = obs.match(/P\d{4,8}/gi) || [];
+  const allB = obs.match(/B\d{4,8}/gi) || [];
+  const all = [...allP, ...allB];
   const exportUpper = exportCote.toUpperCase();
-  return allP.map(c => c.toUpperCase()).filter(c => c !== exportUpper);
+  return all.map(c => c.toUpperCase()).filter(c => c !== exportUpper);
 }
 
 function aggregateByCote(lines: IngresoLine[]): Map<string, IngresoAgg> {
@@ -300,9 +304,10 @@ function FieldLabel({ children }: { children: React.ReactNode }) {
 }
 
 // --- Inline row for SinCruce with quick COTE linking ---
-function SinCruceInlineRow({ row, ingresoMap, edits, onSaved, onEditFull, onViewDetail, isEditedFlag }: {
+function SinCruceInlineRow({ row, ingresoMap, stockAggMap, edits, onSaved, onEditFull, onViewDetail, isEditedFlag }: {
   row: SinCruceRow;
   ingresoMap: Map<string, IngresoAgg>;
+  stockAggMap: Map<string, StockCodigoAgg>;
   edits: EditsStore;
   onSaved: (edits: EditsStore) => void;
   onEditFull: () => void;
@@ -315,7 +320,7 @@ function SinCruceInlineRow({ row, ingresoMap, edits, onSaved, onEditFull, onView
 
   const currentManualCotes = edits.exports[row.exp.id]?.manualCotes || [];
 
-  const existingCotesInCaliral = [...ingresoMap.keys()].sort();
+  const existingCotesInCaliral = [...ingresoMap.keys(), ...stockAggMap.keys()].sort();
 
   const handleQuickAdd = () => {
     const cote = newCote.trim().toUpperCase();
@@ -418,9 +423,15 @@ function SinCruceInlineRow({ row, ingresoMap, edits, onSaved, onEditFull, onView
                   onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleQuickAdd(); } }}
                 />
                 <datalist id={`cote-sug-${row.exp.id}`}>
-                  {existingCotesInCaliral.filter(c => !currentManualCotes.some(mc => mc.cote === c)).map(c => (
-                    <option key={c} value={c}>{c} — {ingresoMap.get(c)?.producto || ''} ({ingresoMap.get(c)?.envases || 0} cajas)</option>
-                  ))}
+                  {existingCotesInCaliral.filter(c => !currentManualCotes.some(mc => mc.cote === c)).map(c => {
+                    const ing = ingresoMap.get(c);
+                    const stk = stockAggMap.get(c);
+                    return (
+                      <option key={c} value={c}>
+                        {c} — {ing?.producto || stk?.producto || ''} ({ing?.envases || stk?.totalCajas || 0} cajas) {stk?.tipo === 'PASE_SANITARIO' ? '[PASE]' : ''}
+                      </option>
+                    );
+                  })}
                 </datalist>
               </div>
               <div className="w-[90px]">
@@ -465,10 +476,270 @@ function SinCruceInlineRow({ row, ingresoMap, edits, onSaved, onEditFull, onView
   );
 }
 
+// --- Stock Table Component ---
+function StockTable({ stockAggMap, ingresoMap, cruceRows, sinCruceRows, edits }: {
+  stockAggMap: Map<string, StockCodigoAgg>;
+  ingresoMap: Map<string, IngresoAgg>;
+  cruceRows: CruceRow[];
+  sinCruceRows: SinCruceRow[];
+  edits: EditsStore;
+}) {
+  const [expandedCode, setExpandedCode] = useState<string | null>(null);
+  const [stockSearch, setStockSearch] = useState('');
+  const [stockFilter, setStockFilter] = useState<'all' | 'con_ingreso' | 'sin_ingreso' | 'con_diff'>('all');
+
+  // Build export cajas map: codigo -> total cajas used in exports (from manual links)
+  const exportCajasMap = useMemo(() => {
+    const map = new Map<string, number>();
+    // From cruceRows with manual links
+    for (const r of cruceRows) {
+      if (r.isManualLink && edits.exports[r.exp.id]?.manualCotes) {
+        for (const mc of edits.exports[r.exp.id].manualCotes!) {
+          map.set(mc.cote, (map.get(mc.cote) || 0) + mc.cajas);
+        }
+      }
+      // Also add automatic cotes from ingresoCotes (but we can't know per-COTE split)
+    }
+    // From sinCruceRows with manual cotes
+    for (const r of sinCruceRows) {
+      const mc = edits.exports[r.exp.id]?.manualCotes;
+      if (mc) {
+        for (const link of mc) {
+          map.set(link.cote, (map.get(link.cote) || 0) + link.cajas);
+        }
+      }
+    }
+    return map;
+  }, [cruceRows, sinCruceRows, edits]);
+
+  // Build list from stockAggMap
+  const stockList = useMemo(() => {
+    let items = [...stockAggMap.values()];
+
+    if (stockSearch) {
+      const s = stockSearch.toLowerCase();
+      items = items.filter(a =>
+        a.codigo.toLowerCase().includes(s) ||
+        a.producto.toLowerCase().includes(s) ||
+        a.contenedores.some(c => c.toLowerCase().includes(s))
+      );
+    }
+
+    if (stockFilter === 'con_ingreso') {
+      items = items.filter(a => ingresoMap.has(a.codigo));
+    } else if (stockFilter === 'sin_ingreso') {
+      items = items.filter(a => !ingresoMap.has(a.codigo));
+    } else if (stockFilter === 'con_diff') {
+      items = items.filter(a => {
+        const ing = ingresoMap.get(a.codigo);
+        if (!ing) return false;
+        return Math.abs(a.totalCajas - ing.envases) > 0;
+      });
+    }
+
+    items.sort((a, b) => b.totalKilos - a.totalKilos);
+    return items;
+  }, [stockAggMap, ingresoMap, stockSearch, stockFilter]);
+
+  const totalConIngreso = [...stockAggMap.values()].filter(a => ingresoMap.has(a.codigo)).length;
+  const totalSinIngreso = stockAggMap.size - totalConIngreso;
+  const totalCajasStock = [...stockAggMap.values()].reduce((s, a) => s + a.totalCajas, 0);
+
+  return (
+    <div>
+      {/* Filter bar */}
+      <div className="flex flex-wrap gap-2 items-center mb-3">
+        <div className="relative flex-1 min-w-[180px]">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+          <Input
+            placeholder="Buscar codigo, producto, contenedor..."
+            value={stockSearch} onChange={e => setStockSearch(e.target.value)} className="pl-8 h-8 text-xs"
+          />
+        </div>
+        <Select value={stockFilter} onValueChange={v => setStockFilter(v as typeof stockFilter)}>
+          <SelectTrigger className="w-[180px] h-8 text-xs"><SelectValue placeholder="Filtrar" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos ({stockAggMap.size})</SelectItem>
+            <SelectItem value="con_ingreso">Con ingreso ({totalConIngreso})</SelectItem>
+            <SelectItem value="sin_ingreso">Sin ingreso ({totalSinIngreso})</SelectItem>
+            <SelectItem value="con_diff">Con diferencia</SelectItem>
+          </SelectContent>
+        </Select>
+        <div className="text-xs text-slate-500">
+          {stockList.length} codigos — {totalCajasStock.toLocaleString('es-UY')} cajas totales
+        </div>
+      </div>
+
+      {/* Table */}
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b bg-slate-50 text-left text-xs text-slate-500 uppercase">
+              <th className="px-3 py-2.5">Codigo</th>
+              <th className="px-3 py-2.5">Tipo</th>
+              <th className="px-3 py-2.5 hidden lg:table-cell">Producto</th>
+              <th className="px-3 py-2.5 hidden xl:table-cell">Contenedores</th>
+              <th className="px-3 py-2.5 text-right">Pallets</th>
+              <th className="px-3 py-2.5 text-right">Cajas Stock</th>
+              <th className="px-3 py-2.5 text-right">Kg Stock</th>
+              <th className="px-3 py-2.5 text-right">Cajas Ingreso</th>
+              <th className="px-3 py-2.5 text-right hidden md:table-cell">Cajas Export.</th>
+              <th className="px-3 py-2.5 text-right">Diff Stock/Ingreso</th>
+              <th className="px-3 py-2.5 text-right hidden lg:table-cell">Diff Stock/Export</th>
+              <th className="px-3 py-2.5 w-8"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {stockList.length === 0 ? (
+              <tr><td colSpan={12} className="text-center py-10 text-slate-400">No se encontraron codigos</td></tr>
+            ) : stockList.map(agg => {
+              const ing = ingresoMap.get(agg.codigo);
+              const expCajas = exportCajasMap.get(agg.codigo) || 0;
+              const diffIngreso = ing ? agg.totalCajas - ing.envases : null;
+              const diffExport = expCajas > 0 ? agg.totalCajas - expCajas : null;
+
+              return (
+                <React.Fragment key={agg.codigo}>
+                  <tr className={`border-b hover:bg-teal-50/40 ${expandedCode === agg.codigo ? 'bg-teal-50/60' : ''}`}>
+                    <td className="px-3 py-2.5 text-xs font-mono font-medium text-teal-700">{agg.codigo}</td>
+                    <td className="px-3 py-2.5">
+                      <span className={`inline-block text-[9px] font-bold px-1.5 py-0.5 rounded ${agg.tipo === 'COTE' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'}`}>
+                        {agg.tipo === 'COTE' ? 'COTE' : 'PASE'}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2.5 text-xs hidden lg:table-cell max-w-[200px] truncate" title={agg.producto}>{agg.producto}</td>
+                    <td className="px-3 py-2.5 text-xs hidden xl:table-cell max-w-[150px] truncate">{agg.contenedores.join(', ') || '-'}</td>
+                    <td className="px-3 py-2.5 text-xs text-right font-mono">{agg.totalPallets}</td>
+                    <td className="px-3 py-2.5 text-xs text-right font-mono font-medium">{agg.totalCajas.toLocaleString('es-UY')}</td>
+                    <td className="px-3 py-2.5 text-xs text-right font-mono hidden">{agg.totalKilos.toLocaleString('es-UY')}</td>
+                    <td className="px-3 py-2.5 text-xs text-right font-mono">
+                      {ing ? (
+                        <span className="text-emerald-700">{ing.envases.toLocaleString('es-UY')}</span>
+                      ) : (
+                        <span className="text-slate-300">—</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2.5 text-xs text-right font-mono hidden md:table-cell">
+                      {expCajas > 0 ? (
+                        <span className="text-blue-700">{expCajas.toLocaleString('es-UY')}</span>
+                      ) : (
+                        <span className="text-slate-300">—</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2.5 text-right">
+                      {diffIngreso !== null ? (
+                        <span className={`inline-flex items-center text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                          diffIngreso === 0 ? 'bg-emerald-50 text-emerald-700' :
+                          diffIngreso < 0 ? 'bg-red-50 text-red-700' : 'bg-sky-50 text-sky-700'
+                        }`}>
+                          {diffIngreso === 0 ? '0' : (diffIngreso > 0 ? '+' : '') + diffIngreso}
+                        </span>
+                      ) : (
+                        <span className="text-[10px] text-slate-300">—</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2.5 text-right hidden lg:table-cell">
+                      {diffExport !== null ? (
+                        <span className={`inline-flex items-center text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                          diffExport === 0 ? 'bg-emerald-50 text-emerald-700' :
+                          diffExport < 0 ? 'bg-red-50 text-red-700' : 'bg-sky-50 text-sky-700'
+                        }`}>
+                          {diffExport === 0 ? '0' : (diffExport > 0 ? '+' : '') + diffExport}
+                        </span>
+                      ) : (
+                        <span className="text-[10px] text-slate-300">—</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2.5 text-center">
+                      <button
+                        className="p-1 rounded hover:bg-slate-100"
+                        onClick={() => setExpandedCode(expandedCode === agg.codigo ? null : agg.codigo)}
+                      >
+                        <ChevronRight className={`h-3.5 w-3.5 text-slate-400 transition-transform ${expandedCode === agg.codigo ? 'rotate-90' : ''}`} />
+                      </button>
+                    </td>
+                  </tr>
+                  {expandedCode === agg.codigo && (
+                    <tr className="border-b bg-teal-50/30">
+                      <td colSpan={12} className="px-4 py-3">
+                        <div className="space-y-3\">
+                          {/* Ingreso info if found */}
+                          {ing && (
+                            <div className="bg-emerald-50 rounded-lg p-3">
+                              <p className="text-[10px] text-emerald-600 uppercase font-bold mb-1">Ingreso vinculado</p>
+                              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                                <div><span className="text-slate-500">Tramite:</span> <span className="font-mono">{ing.tramite}</span></div>
+                                <div><span className="text-slate-500">Fecha:</span> <span>{fd(ing.fecha)}</span></div>
+                                <div><span className="text-slate-500">Cajas:</span> <span className="font-mono font-medium text-emerald-700">{ing.envases.toLocaleString('es-UY')}</span></div>
+                                <div><span className="text-slate-500">Kg Neto:</span> <span className="font-mono">{ing.pesoNeto.toLocaleString('es-UY')}</span></div>
+                              </div>
+                              <div className="text-[11px] text-slate-600 mt-1">
+                                <span className="text-slate-500">Producto:</span> {ing.producto}
+                                {ing.cortes.length > 0 && <span className="text-slate-500 ml-3">Cortes: {ing.cortes.join(', ')}</span>}
+                              </div>
+                            </div>
+                          )}
+                          {!ing && (
+                            <div className="bg-amber-50 rounded-lg p-2 text-[11px] text-amber-700">
+                              Este codigo no tiene un ingreso registrado en los depositos de Caliral.
+                            </div>
+                          )}
+
+                          {/* Pallet details */}
+                          <div>
+                            <p className="text-[10px] text-slate-500 uppercase font-bold mb-1">Pallets en stock ({agg.pallets.length})</p>
+                            <div className="max-h-64 overflow-y-auto border rounded">
+                              <table className="w-full text-[11px]">
+                                <thead className="sticky top-0 bg-slate-100">
+                                  <tr>
+                                    <th className="px-2 py-1 text-left">Contenedor</th>
+                                    <th className="px-2 py-1 text-left">Fec Ent</th>
+                                    <th className="px-2 py-1 text-right">Cajas</th>
+                                    <th className="px-2 py-1 text-right">Kg</th>
+                                    <th className="px-2 py-1 text-left">Contenido</th>
+                                    <th className="px-2 py-1 text-left">Lote</th>
+                                    <th className="px-2 py-1 text-left">Venc.</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {agg.pallets.map(p => (
+                                    <tr key={p.id} className="border-t hover:bg-white/50">
+                                      <td className="px-2 py-1 font-mono">{p.contenedor || '-'}</td>
+                                      <td className="px-2 py-1">{p.fechaEntrega || '-'}</td>
+                                      <td className="px-2 py-1 text-right font-mono">{p.cajas.toLocaleString('es-UY')}</td>
+                                      <td className="px-2 py-1 text-right font-mono">{p.kilos.toLocaleString('es-UY')}</td>
+                                      <td className="px-2 py-1 max-w-[300px] truncate" title={p.contenido}>{p.contenido}</td>
+                                      <td className="px-2 py-1 font-mono">{p.nroLote || '-'}</td>
+                                      <td className="px-2 py-1">{p.fechaVencimiento || '-'}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 // --- Component ---
 export default function CruceCaliral() {
   const [loading, setLoading] = useState(true);
-  const [subTab, setSubTab] = useState<'cruce' | 'sincruce' | 'pendientes'>('cruce');
+  const [subTab, setSubTab] = useState<'cruce' | 'sincruce' | 'pendientes' | 'stock'>('cruce');
+
+  // Stock state
+  const [stockData, setStockData] = useState<StockLoad | null>(null);
+  const [stockAggMap, setStockAggMap] = useState<Map<string, StockCodigoAgg>>(new Map());
+  const [stockLoading, setStockLoading] = useState(false);
 
   const [search, setSearch] = useState('');
   const [pais, setPais] = useState('');
@@ -659,6 +930,15 @@ export default function CruceCaliral() {
       setEdits(loadedEdits);
       recomputeCruce(loadedEdits);
       setLoading(false);
+      // Load saved stock data
+      try {
+        const savedStock = localStorage.getItem('trazabilidad_stock_data');
+        if (savedStock) {
+          const load = JSON.parse(savedStock) as StockLoad;
+          setStockData(load);
+          setStockAggMap(buildStockAggMap(load.pallets));
+        }
+      } catch { /* ignore */ }
     })();
   }, [recomputeCruce]);
 
@@ -979,6 +1259,33 @@ export default function CruceCaliral() {
   const hasFilters = search || pais || fechaDesde || fechaHasta || filtroProducto || filtroCorte;
   const detailType = detailRow ? ('exp' in detailRow ? ('ingresoCotes' in detailRow ? 'cruce' : 'sincruce') : 'pendiente') : null;
 
+  // Stock file handler
+  const handleLoadStock = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.xls,.xlsx';
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+      setStockLoading(true);
+      try {
+        const { parseStockXls } = await import('@/lib/parseStockXls');
+        const load = await parseStockXls(file);
+        setStockData(load);
+        localStorage.setItem('trazabilidad_stock_data', JSON.stringify(load));
+        const aggMap = buildStockAggMap(load.pallets);
+        setStockAggMap(aggMap);
+        toast.success(`Stock cargado: ${load.pallets.length} pallets, ${aggMap.size} codigos (COTEs + Pases)`);
+        setSubTab('stock');
+      } catch (err) {
+        toast.error(`Error al cargar stock: ${(err as Error).message}`);
+      } finally {
+        setStockLoading(false);
+      }
+    };
+    input.click();
+  };
+
   const handleExport = async () => {
     const XLSX = await import('xlsx');
     const wb = XLSX.utils.book_new();
@@ -1038,6 +1345,7 @@ export default function CruceCaliral() {
     'trazabilidad_dep_new_records',
     'trazabilidad_dep_deleted',
     'cruce_caliral_edits',
+    'trazabilidad_stock_data',
   ];
 
   const handleBackup = () => {
@@ -1130,6 +1438,9 @@ export default function CruceCaliral() {
           <Button variant="outline" size="sm" onClick={handleExport}>
             <Download className="h-4 w-4 mr-2" />Exportar Excel
           </Button>
+          <Button variant="outline" size="sm" onClick={handleLoadStock} disabled={stockLoading}>
+            <Upload className="h-4 w-4 mr-2" />{stockLoading ? 'Cargando...' : 'Cargar Stock'}
+          </Button>
         </div>
       </div>
 
@@ -1186,6 +1497,9 @@ export default function CruceCaliral() {
           </Button>
           <Button variant={subTab === 'pendientes' ? 'default' : 'outline'} size="sm" onClick={() => setSubTab('pendientes')}>
             <AlertTriangle className="h-4 w-4 mr-1.5" />Ingresos pendientes ({pendienteRows.length})
+          </Button>
+          <Button variant={subTab === 'stock' ? 'default' : 'outline'} size="sm" onClick={() => setSubTab('stock')}>
+            <Package className="h-4 w-4 mr-1.5" />Stock ({stockAggMap.size})
           </Button>
           <div className="flex-1" />
           {hasFilters && <Button variant="ghost" size="sm" onClick={clearFilters}><X className="h-4 w-4 mr-1" />Limpiar</Button>}
@@ -1311,7 +1625,7 @@ export default function CruceCaliral() {
                 {pageData.length === 0 ? (
                   <tr><td colSpan={8} className="text-center py-10 text-slate-400">No se encontraron registros</td></tr>
                 ) : (pageData as SinCruceRow[]).map(r => (
-                  <SinCruceInlineRow key={r.exp.id} row={r} ingresoMap={ingresoMap} edits={edits} onSaved={(newEdits) => { setEdits(newEdits); saveEdits(newEdits); recomputeCruce(newEdits); }} onEditFull={() => openExportEdit(r)} onViewDetail={() => { setIngresoDetailCote(null); setDetailRow(r); setDetailOpen(true); }} isEditedFlag={isEdited('export', r.exp.id)} />
+                  <SinCruceInlineRow key={r.exp.id} row={r} ingresoMap={ingresoMap} stockAggMap={stockAggMap} edits={edits} onSaved={(newEdits) => { setEdits(newEdits); saveEdits(newEdits); recomputeCruce(newEdits); }} onEditFull={() => openExportEdit(r)} onViewDetail={() => { setIngresoDetailCote(null); setDetailRow(r); setDetailOpen(true); }} isEditedFlag={isEdited('export', r.exp.id)} />
                 ))}
               </tbody>
             </table>
@@ -1366,7 +1680,38 @@ export default function CruceCaliral() {
             </table>
             </>
           )}
+
+          {subTab === 'stock' && (
+            <>
+              {stockData ? (<>
+                {/* Stock summary card */}
+                <div className="mb-3 p-3 bg-teal-50 border border-teal-200 rounded-lg text-xs text-teal-800">
+                  <div className="flex flex-wrap items-center gap-4">
+                    <span className="font-bold">Stock al {stockData.fecha} — {stockData.cliente}</span>
+                    <span>Total codigos: <b>{stockAggMap.size}</b></span>
+                    <span>Total pallets: <b>{stockData.pallets.length}</b></span>
+                    <span>Cajas totales: <b>{[...stockAggMap.values()].reduce((s, a) => s + a.totalCajas, 0).toLocaleString('es-UY')}</b></span>
+                    <span>Kg totales: <b>{[...stockAggMap.values()].reduce((s, a) => s + a.totalKilos, 0).toLocaleString('es-UY')}</b></span>
+                  </div>
+                </div>
+                <StockTable
+                  stockAggMap={stockAggMap}
+                  ingresoMap={ingresoMap}
+                  cruceRows={cruceRows}
+                  sinCruceRows={sinCruceRows}
+                  edits={edits}
+                />
+              </>) : (
+                <div className="text-center py-16 text-slate-400">
+                  <Package className="h-12 w-12 mx-auto mb-3 opacity-30" />
+                  <p className="text-sm">No hay datos de stock cargados.</p>
+                  <p className="text-xs mt-1">Hace click en <b>Cargar Stock</b> para subir un archivo XLS del deposito.</p>
+                </div>
+              )}
+            </>
+          )}
         </div>
+        {subTab !== 'stock' && (
         <div className="flex items-center justify-between p-4 border-t">
           <p className="text-sm text-slate-500">{filteredData.length} registros — Pagina {page} de {totalPages || 1}</p>
           <div className="flex gap-2">
@@ -1374,6 +1719,7 @@ export default function CruceCaliral() {
             <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}><ChevronRight className="h-4 w-4" /></Button>
           </div>
         </div>
+        )}
       </CardContent></Card>
 
       {/* Detail Sheet (read-only) */}

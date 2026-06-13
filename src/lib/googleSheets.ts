@@ -19,6 +19,7 @@ export const SYNC_KEYS = [
   'trazabilidad_dep_new_records',
   'trazabilidad_dep_deleted',
   'cruce_caliral_edits',
+  'trazabilidad_stock_data',
 ];
 
 let pushTimer: ReturnType<typeof setTimeout> | null = null;
