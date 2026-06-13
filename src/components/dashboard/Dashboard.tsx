@@ -33,7 +33,7 @@ export default function Dashboard() {
     { label: 'Último Envío', value: data.lastDate ? fmtDate(data.lastDate as string) : '-', icon: CalendarDays, color: 'text-teal-600', bg: 'bg-teal-50' },
   ];
 
-  const monthlyData = (data.monthlyData as Array<Record<string, number>>).map(m => ({ ...m, month: (m.month as string).substring(5) + '/' + (m.month as string).substring(2, 4) }));
+  const monthlyData = ((data.monthlyData as Array<Record<string, number>>) || []).map(m => ({ ...m, month: (m.month as string).substring(5) + '/' + (m.month as string).substring(2, 4) }));
   const topProductos = ((data.byProducto as Array<Record<string, number>>) || []).slice(0, 10);
   const paisData = ((data.byPais as Array<Record<string, number>>) || []).slice(0, 8);
 
