@@ -46,20 +46,41 @@ export default function RootLayout({
 
                   var sheetUrl = localStorage.getItem('trazabilidad_sheets_url') || '';
                   if (sheetUrl) {
+                    var done = 0;
+                    var total = keys.length;
                     keys.forEach(function(k){
                       fetch(sheetUrl, {
                         method: 'POST',
                         headers: {'Content-Type':'text/plain;charset=utf-8'},
                         body: JSON.stringify({action:'delete',key:k})
-                      }).catch(function(){});
+                      }).then(function(){
+                        done++;
+                        if (done >= total) {
+                          localStorage.setItem('trazabilidad_sheets_last_sync', new Date().toISOString());
+                          window.history.replaceState({}, '', window.location.pathname);
+                          window.location.reload();
+                        }
+                      }).catch(function(){
+                        done++;
+                        if (done >= total) {
+                          localStorage.setItem('trazabilidad_sheets_last_sync', new Date().toISOString());
+                          window.history.replaceState({}, '', window.location.pathname);
+                          window.location.reload();
+                        }
+                      });
                     });
+                  } else {
+                    window.history.replaceState({}, '', window.location.pathname);
+                    window.location.reload();
                   }
-                  localStorage.setItem('trazabilidad_sheets_last_sync', new Date().toISOString());
-                  window.history.replaceState({}, '', window.location.pathname);
-                  window.location.reload();
                 }
               } catch(e) {}
             })();`,
+          }}
+        />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `if(new URLSearchParams(window.location.search).get('reset')==='1'){window.__TRZ_RESET=1;}`,
           }}
         />
       </head>

@@ -18,8 +18,9 @@ import { toast } from 'sonner';
 export default function Home() {
   const { activeTab } = useAppStore();
 
-  // Pull from Google Sheets on first load
+  // Pull from Google Sheets on first load (skip if ?reset=1 was just processed)
   useEffect(() => {
+    if ((window as unknown as Record<string, number>).__TRZ_RESET) return;
     if (!isConfigured()) return;
     let mounted = true;
     (async () => {
