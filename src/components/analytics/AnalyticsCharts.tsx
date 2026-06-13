@@ -13,7 +13,7 @@ export default function AnalyticsCharts() {
   useEffect(() => { fetchAnalytics().then(d => { setData(d); setLoading(false); }); }, []);
   if (loading||!data) return <div className="p-6 grid grid-cols-1 lg:grid-cols-2 gap-6"><Skeleton className="h-80"/><Skeleton className="h-80"/></div>;
 
-  const md = (data.monthlyData as Array<Record<string,number>>).map(m=>({...m, label:(m.month as string).substring(5)+'/'+(m.month as string).substring(2,4)}));
+  const md = ((data.monthlyData as Array<Record<string,number>>) || []).map(m=>({...m, label:(m.month as string).substring(5)+'/'+(m.month as string).substring(2,4)}));
   const bp = ((data.byProducto as Array<Record<string,number>>)||[]).slice(0,12);
   const bc = ((data.byCorte as Array<Record<string,number>>)||[]).slice(0,15);
   const bd = ((data.byDestino as Array<Record<string,number>>)||[]).slice(0,8);
