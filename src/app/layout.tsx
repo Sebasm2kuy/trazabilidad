@@ -29,6 +29,40 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="es" suppressHydrationWarning>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){
+              try {
+                var p = new URLSearchParams(window.location.search);
+                if (p.get('reset') === '1') {
+                  var keys = [
+                    'trazabilidad_new_records','trazabilidad_exp_edits','trazabilidad_exp_deleted',
+                    'trazabilidad_exp_ingresos','trazabilidad_dep_edits','trazabilidad_dep_new_records',
+                    'trazabilidad_dep_deleted','cruce_caliral_edits','trazabilidad_stock_data',
+                    'trazabilidad_imported_batches','trazabilidad_recent_searches'
+                  ];
+                  keys.forEach(function(k){ localStorage.removeItem(k); });
+
+                  var sheetUrl = localStorage.getItem('trazabilidad_sheets_url') || '';
+                  if (sheetUrl) {
+                    keys.forEach(function(k){
+                      fetch(sheetUrl, {
+                        method: 'POST',
+                        headers: {'Content-Type':'text/plain;charset=utf-8'},
+                        body: JSON.stringify({action:'delete',key:k})
+                      }).catch(function(){});
+                    });
+                  }
+                  localStorage.setItem('trazabilidad_sheets_last_sync', new Date().toISOString());
+                  window.history.replaceState({}, '', window.location.pathname);
+                  window.location.reload();
+                }
+              } catch(e) {}
+            })();`,
+          }}
+        />
+      </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground`}
       >

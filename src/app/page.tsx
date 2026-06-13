@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useAppStore } from '@/store/useAppStore';
 import Sidebar from '@/components/Sidebar';
 import Dashboard from '@/components/dashboard/Dashboard';
@@ -12,67 +12,14 @@ import AnalyticsCharts from '@/components/analytics/AnalyticsCharts';
 import ProductoDestino from '@/components/comparativa/ProductoDestino';
 import ImportExportPanel from '@/components/import-export/ImportExportPanel';
 import NewRecordForm from '@/components/new-record/NewRecordForm';
-import { initialPull, isConfigured, getSheetUrl, schedulePush } from '@/lib/googleSheets';
+import { initialPull, isConfigured } from '@/lib/googleSheets';
 import { toast } from 'sonner';
-
-const ALL_DATA_KEYS = [
-  'trazabilidad_new_records',
-  'trazabilidad_exp_edits',
-  'trazabilidad_exp_deleted',
-  'trazabilidad_exp_ingresos',
-  'trazabilidad_dep_edits',
-  'trazabilidad_dep_new_records',
-  'trazabilidad_dep_deleted',
-  'cruce_caliral_edits',
-  'trazabilidad_stock_data',
-  'trazabilidad_imported_batches',
-  'trazabilidad_recent_searches',
-];
-
-function factoryReset() {
-  // 1. Clear all data from localStorage
-  for (const key of ALL_DATA_KEYS) {
-    localStorage.removeItem(key);
-  }
-
-  // 2. If Sheets is configured, also delete from remote
-  const sheetUrl = getSheetUrl();
-  if (sheetUrl) {
-    for (const key of ALL_DATA_KEYS) {
-      fetch(sheetUrl, {
-        method: 'POST',
-        redirect: 'follow',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ action: 'delete', key }),
-      }).catch(() => {});
-    }
-  }
-
-  localStorage.setItem('trazabilidad_sheets_last_sync', new Date().toISOString());
-}
 
 export default function Home() {
   const { activeTab } = useAppStore();
-  const [ready, setReady] = useState(false);
 
+  // Pull from Google Sheets on first load
   useEffect(() => {
-    // Check for ?reset URL parameter
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('reset') === '1') {
-      factoryReset();
-      // Clean URL
-      window.history.replaceState({}, '', window.location.pathname);
-      toast.success('Datos borrados. Recargando...');
-      setTimeout(() => window.location.reload(), 1000);
-      return;
-    }
-
-    setReady(true);
-  }, []);
-
-  // Pull from Google Sheets on first load (only after reset check)
-  useEffect(() => {
-    if (!ready) return;
     if (!isConfigured()) return;
     let mounted = true;
     (async () => {
@@ -85,15 +32,7 @@ export default function Home() {
       }
     })();
     return () => { mounted = false; };
-  }, [ready]);
-
-  if (!ready) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-slate-50">
-        <p className="text-sm text-slate-400">Cargando...</p>
-      </div>
-    );
-  }
+  }, []);
 
   const renderContent = () => {
     switch (activeTab) {
