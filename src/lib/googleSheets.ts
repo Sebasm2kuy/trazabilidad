@@ -20,6 +20,7 @@ export const SYNC_KEYS = [
   'trazabilidad_dep_deleted',
   'cruce_caliral_edits',
   'trazabilidad_stock_data',
+  'trazabilidad_system_password',
 ];
 
 let pushTimer: ReturnType<typeof setTimeout> | null = null;
@@ -239,6 +240,50 @@ export function schedulePush() {
 /**
  * Pull data on app load. Call this once when the app mounts.
  */
+// --- Password management (synced via Sheets) ---
+
+const PASSWORD_KEY = 'trazabilidad_system_password';
+
+/**
+ * Simple hash function for password (NOT cryptographically secure,
+ * but sufficient for a client-side app deterrent).
+ * Uses a basic djb2-like hash with salt.
+ */
+function simpleHash(str: string): string {
+  let hash = 5381;
+  const salted = 'trazabilidad_salt_' + str;
+  for (let i = 0; i < salted.length; i++) {
+    hash = ((hash << 5) + hash + salted.charCodeAt(i)) & 0xffffffff;
+  }
+  return hash.toString(36);
+}
+
+/**
+ * Check if a password has been set.
+ */
+export function hasPassword(): boolean {
+  if (typeof window === 'undefined') return false;
+  return !!localStorage.getItem(PASSWORD_KEY);
+}
+
+/**
+ * Set a new password (hashes and stores it).
+ */
+export function setPassword(pw: string): void {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(PASSWORD_KEY, simpleHash(pw));
+}
+
+/**
+ * Verify a password against the stored hash.
+ */
+export function verifyPassword(pw: string): boolean {
+  if (typeof window === 'undefined') return false;
+  const stored = localStorage.getItem(PASSWORD_KEY);
+  if (!stored) return false;
+  return stored === simpleHash(pw);
+}
+
 export async function initialPull(): Promise<{ count: number; error?: string }> {
   const url = getSheetUrl();
   if (!url) return { count: 0, error: 'No configurada' };
