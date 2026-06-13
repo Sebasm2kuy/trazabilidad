@@ -39,3 +39,29 @@ export interface Shipment {
   proceso?: string | null;
   tipo: string;
 }
+
+export interface ExpRecord extends Shipment {
+  papelSeguridad?: string;
+  recibidaFechaHora?: string;
+  recepcionServicio?: string;
+  inspeccionExteriorConforme?: string;
+  matriculaAvion?: string;
+  precinto2?: string;
+  precinto3?: string;
+  precinto4?: string;
+  precintoAgencia?: string;
+  guiaINAC?: string;
+  correspondeAbrirContenedor?: string;
+  validezMercaderia?: string;
+  recibidaTemperatura?: string | number;
+  recepcionObservaciones?: string;
+  recepcionUsuario?: string;
+  obsInspeccionExterior?: string;
+  contenedorInspeccion?: string;
+  avionInspeccion?: string;
+  camionInspeccion?: string;
+  inspPrecinto1?: string;
+  inspPrecinto2?: string;
+  inspPrecinto3?: string;
+  inspPrecinto4?: string;
+}

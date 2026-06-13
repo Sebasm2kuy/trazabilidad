@@ -6,7 +6,10 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Search, X, ChevronLeft, ChevronRight, Eye, Download, ArrowLeftRight, AlertTriangle, CheckCircle2, Link2, Unlink, PackageMinus, Pencil, Save, Plus, Trash2, RotateCcw } from 'lucide-react';
+import { Search, X, ChevronLeft, ChevronRight, Eye, Download, ArrowLeftRight, AlertTriangle, CheckCircle2, Link2, Unlink, PackageMinus, Pencil, Save, Plus, Trash2, RotateCcw, Upload } from 'lucide-react';
+import { toast } from 'sonner';
+import { schedulePush } from '@/lib/googleSheets';
+import type { ExpRecord } from '@/lib/types';
 
 function fd(d: string | null | undefined) { if (!d) return '-'; return new Date(d).toLocaleDateString('es-UY', { day: '2-digit', month: '2-digit', year: 'numeric' }); }
 function fmt(n: number) { if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M'; if (n >= 1000) return (n / 1000).toFixed(1) + 'K'; return Math.round(n).toLocaleString('es-UY'); }
@@ -39,32 +42,6 @@ interface IngresoAgg {
   lines: IngresoLine[];
 }
 
-interface ExpRecord {
-  id: string;
-  nroTramite: number;
-  fechaTramite: string;
-  nroCote: string;
-  paisDestino: string;
-  denominacionMercaderia: string;
-  corte: string;
-  pesoNeto: number | null;
-  pesoBruto: number | null;
-  cantidadEnvases: number | null;
-  contenedorSerieNro?: string | null;
-  nroCertificadoSanitario?: string | null;
-  observaciones?: string | null;
-  tipoTransporte?: string | null;
-  nombreEstablecimientoCertif?: string | null;
-  precinto1?: string | null;
-  matriculaCamion?: string | null;
-  fechaEmitidoCote?: string | null;
-  fechaInicioProduccion?: string | null;
-  fechaFinProduccion?: string | null;
-  fechaInicioCongelacion?: string | null;
-  fechaFinCongelacion?: string | null;
-  [key: string]: unknown;
-}
-
 interface CruceRow {
   exp: ExpRecord;
   ingresoCotes: string[];
@@ -76,6 +53,7 @@ interface CruceRow {
   kgExp: number;
   diffEnvases: number;
   isManualLink?: boolean;
+  manualCajasUsadas?: number;
 }
 
 interface SinCruceRow {
@@ -171,10 +149,20 @@ function loadEdits(): EditsStore {
 function saveEdits(edits: EditsStore) {
   if (typeof window === 'undefined') return;
   localStorage.setItem(EDITS_KEY, JSON.stringify(edits));
+  schedulePush();
 }
 
 // --- Data loading ---
-const cache: { shipments: IngresoLine[]; exports: ExpRecord[]; loaded: boolean } = { shipments: [], exports: [], loaded: false };
+const cache: { shipments: IngresoLine[]; exportsRaw: ExpRecord[]; exports: ExpRecord[]; loaded: boolean } = { shipments: [], exportsRaw: [], exports: [], loaded: false };
+
+function loadExpEdits(): Record<string, Partial<ExpRecord>> {
+  try { const r = localStorage.getItem('trazabilidad_exp_edits'); return r ? JSON.parse(r) : {}; } catch { return {}; }
+}
+
+function applyExpEdits(data: ExpRecord[], edits: Record<string, Partial<ExpRecord>>): ExpRecord[] {
+  if (Object.keys(edits).length === 0) return data;
+  return data.map(s => edits[s.id] ? { ...s, ...edits[s.id] } : s);
+}
 
 async function ensureData() {
   if (!cache.loaded) {
@@ -184,16 +172,72 @@ async function ensureData() {
     ]);
     const allShipments: IngresoLine[] = await sR.json();
     const allExports: ExpRecord[] = await eR.json();
-    cache.shipments = allShipments.filter(s => (s.nombreEstablecimientoDestino || '').toLowerCase().includes('caliral'));
-    cache.exports = allExports;
+
+    // Filter to Caliral-bound shipments
+    let caliralShipments = allShipments.filter(s => (s.nombreEstablecimientoDestino || '').toLowerCase().includes('caliral'));
+
+    // Also include new deposit records from Depositos page
+    try {
+      const depNewRaw = localStorage.getItem('trazabilidad_dep_new_records');
+      if (depNewRaw) {
+        const depNew: IngresoLine[] = JSON.parse(depNewRaw);
+        const existingIds = new Set(caliralShipments.map(s => s.id));
+        for (const nr of depNew) {
+          if (!existingIds.has(nr.id)) {
+            caliralShipments.push(nr);
+          }
+        }
+      }
+    } catch { /* ignore */ }
+
+    // Apply deposit edits from Depositos page
+    try {
+      const depEditsRaw = localStorage.getItem('trazabilidad_dep_edits');
+      if (depEditsRaw) {
+        const depEdits: Record<string, Partial<IngresoLine>> = JSON.parse(depEditsRaw);
+        caliralShipments = caliralShipments.map(s => depEdits[s.id] ? { ...s, ...depEdits[s.id] } : s);
+      }
+    } catch { /* ignore */ }
+
+    // Remove deleted deposits
+    try {
+      const depDelRaw = localStorage.getItem('trazabilidad_dep_deleted');
+      if (depDelRaw) {
+        const depDeleted: Set<string> = new Set(JSON.parse(depDelRaw));
+        caliralShipments = caliralShipments.filter(s => !depDeleted.has(s.id));
+      }
+    } catch { /* ignore */ }
+
+    cache.shipments = caliralShipments;
+    cache.exportsRaw = allExports;
     cache.loaded = true;
   }
+
+  // Build full export list: original JSON + new PDF uploads
+  const allExportsList = [...cache.exportsRaw];
+  try {
+    const raw = localStorage.getItem('trazabilidad_new_records');
+    if (raw) {
+      const newRecs: ExpRecord[] = JSON.parse(raw);
+      const existingIds = new Set(cache.exportsRaw.map(e => e.id));
+      for (const nr of newRecs) {
+        if (nr.tipo === 'EXPORTACION' && !existingIds.has(nr.id)) {
+          allExportsList.push(nr);
+        }
+      }
+    }
+  } catch { /* ignore */ }
+
+  // Apply edits from Exportaciones page to ALL exports (including PDF uploads)
+  const expEdits = loadExpEdits();
+  cache.exports = applyExpEdits(allExportsList, expEdits);
 }
 
 function extractIngresoCotes(obs: string | null | undefined, exportCote: string): string[] {
   if (!obs) return [];
-  const allP = obs.match(/P\d{4,6}/g) || [];
-  return allP.filter(c => c !== exportCote);
+  const allP = obs.match(/P\d{4,8}/gi) || [];
+  const exportUpper = exportCote.toUpperCase();
+  return allP.map(c => c.toUpperCase()).filter(c => c !== exportUpper);
 }
 
 function aggregateByCote(lines: IngresoLine[]): Map<string, IngresoAgg> {
@@ -256,12 +300,13 @@ function FieldLabel({ children }: { children: React.ReactNode }) {
 }
 
 // --- Inline row for SinCruce with quick COTE linking ---
-function SinCruceInlineRow({ row, ingresoMap, edits, onSaved, onEditFull, isEditedFlag }: {
+function SinCruceInlineRow({ row, ingresoMap, edits, onSaved, onEditFull, onViewDetail, isEditedFlag }: {
   row: SinCruceRow;
   ingresoMap: Map<string, IngresoAgg>;
   edits: EditsStore;
   onSaved: (edits: EditsStore) => void;
   onEditFull: () => void;
+  onViewDetail: () => void;
   isEditedFlag: boolean;
 }) {
   const [expanding, setExpanding] = useState(false);
@@ -274,11 +319,24 @@ function SinCruceInlineRow({ row, ingresoMap, edits, onSaved, onEditFull, isEdit
 
   const handleQuickAdd = () => {
     const cote = newCote.trim().toUpperCase();
-    const cajas = parseInt(newCajas) || 0;
-    if (!cote || cajas <= 0) return;
-    if (currentManualCotes.some(c => c.cote === cote)) return;
-
-    const updated = [...currentManualCotes, { cote, cajas }];
+    if (!cote) return;
+    let cajas = parseInt(newCajas) || 0;
+    if (cajas <= 0 && ingresoMap.has(cote)) {
+      cajas = ingresoMap.get(cote)!.envases;
+    }
+    if (cajas <= 0) {
+      toast.error('Ingresá la cantidad de cajas');
+      return;
+    }
+    const existingIdx = currentManualCotes.findIndex(c => c.cote === cote);
+    let updated: ManualCoteLink[];
+    if (existingIdx >= 0) {
+      updated = currentManualCotes.map((c, i) => i === existingIdx ? { ...c, cajas } : c);
+      toast.success(`${cote} actualizado: ${cajas} cajas`);
+    } else {
+      updated = [...currentManualCotes, { cote, cajas }];
+      toast.success(`${cote} agregado`);
+    }
     const newEdits: EditsStore = {
       ...edits,
       exports: {
@@ -312,7 +370,7 @@ function SinCruceInlineRow({ row, ingresoMap, edits, onSaved, onEditFull, isEdit
   return (
     <>
       <tr className={`border-b hover:bg-amber-50/40 ${isEditedFlag ? 'bg-violet-50/30' : ''}`}>
-        <td className="px-3 py-2.5 text-xs font-mono font-medium text-amber-700">{row.exp.nroCote}</td>
+        <td className="px-3 py-2.5 text-xs font-mono font-medium text-amber-700"><button onClick={(e) => { e.stopPropagation(); onViewDetail(); }} className="hover:underline cursor-pointer">{row.exp.nroCote}</button></td>
         <td className="px-3 py-2.5 text-xs font-mono">{row.exp.nroTramite}</td>
         <td className="px-3 py-2.5 text-xs">{fd(row.exp.fechaTramite)}</td>
         <td className="px-3 py-2.5 text-xs">{row.exp.paisDestino}</td>
@@ -377,7 +435,7 @@ function SinCruceInlineRow({ row, ingresoMap, edits, onSaved, onEditFull, isEdit
                   onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleQuickAdd(); } }}
                 />
               </div>
-              <Button size="sm" className="h-8 text-xs" onClick={handleQuickAdd} disabled={!newCote.trim() || !(parseInt(newCajas) > 0)}>
+              <Button size="sm" className="h-8 text-xs" onClick={handleQuickAdd} disabled={!newCote.trim()}>
                 <Plus className="h-3 w-3 mr-1" />Agregar
               </Button>
               <Button size="sm" variant="outline" className="h-8 text-xs" onClick={onEditFull}>
@@ -388,12 +446,16 @@ function SinCruceInlineRow({ row, ingresoMap, edits, onSaved, onEditFull, isEdit
               </Button>
             </div>
             {currentManualCotes.length > 0 && (
-              <div className="mt-2 flex items-center gap-2 text-[11px] text-slate-600">
-                <span>Total vinculacion manual: <b>{currentManualCotes.reduce((s, c) => s + c.cajas, 0)}</b> cajas ingreso</span>
-                <span className="text-slate-300">|</span>
-                <span>Cajas exp.: <b>{row.exp.cantidadEnvases || 0}</b></span>
-                <span className="text-slate-300">|</span>
-                <span>Diff: <b className={currentManualCotes.reduce((s, c) => s + c.cajas, 0) - (row.exp.cantidadEnvases || 0) < 0 ? 'text-red-600' : 'text-emerald-600'}>{(currentManualCotes.reduce((s, c) => s + c.cajas, 0) - (row.exp.cantidadEnvases || 0)).toLocaleString('es-UY')}</b></span>
+              <div className="mt-2 space-y-0.5">
+                <div className="flex items-center gap-2 text-[11px] text-slate-600">
+                  <span>Usadas: <b className="text-violet-700">{currentManualCotes.reduce((s, c) => s + c.cajas, 0)}</b></span>
+                  <span className="text-slate-300">|</span>
+                  <span>En depositos: <b className="text-emerald-700">{currentManualCotes.reduce((s, c) => s + (ingresoMap.get(c.cote)?.envases || 0), 0)}</b></span>
+                  <span className="text-slate-300">|</span>
+                  <span>Exp.: <b>{row.exp.cantidadEnvases || 0}</b></span>
+                  <span className="text-slate-300">|</span>
+                  <span>Diff depositos: <b className={currentManualCotes.reduce((s, c) => s + (ingresoMap.get(c.cote)?.envases || 0), 0) - (row.exp.cantidadEnvases || 0) < 0 ? 'text-red-600' : 'text-emerald-600'}>{(currentManualCotes.reduce((s, c) => s + (ingresoMap.get(c.cote)?.envases || 0), 0) - (row.exp.cantidadEnvases || 0)).toLocaleString('es-UY')}</b></span>
+                </div>
               </div>
             )}
           </td>
@@ -412,14 +474,19 @@ export default function CruceCaliral() {
   const [pais, setPais] = useState('');
   const [fechaDesde, setFechaDesde] = useState('');
   const [fechaHasta, setFechaHasta] = useState('');
+  const [filtroProducto, setFiltroProducto] = useState('');
+  const [filtroCorte, setFiltroCorte] = useState('');
 
   const [page, setPage] = useState(1);
   const limit = 20;
 
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailRow, setDetailRow] = useState<CruceRow | SinCruceRow | IngresoPendienteRow | null>(null);
+  const [ingresoDetailCote, setIngresoDetailCote] = useState<string | null>(null);
 
   const [paises, setPaises] = useState<string[]>([]);
+  const [productos, setProductos] = useState<string[]>([]);
+  const [cortes, setCortes] = useState<string[]>([]);
 
   const [ingresoMap, setIngresoMap] = useState<Map<string, IngresoAgg>>(new Map());
   const [cruceRows, setCruceRows] = useState<CruceRow[]>([]);
@@ -539,9 +606,10 @@ export default function CruceCaliral() {
 
       if (foundInCaliral.length > 0) {
         const aggs = foundInCaliral.map(c => iMap.get(c.cote)!);
-        const totalEnvasesIngreso = isManual
-          ? foundInCaliral.reduce((s, c) => s + c.cajas, 0)
-          : aggs.reduce((s, a) => s + a.envases, 0);
+        const totalEnvasesIngreso = aggs.reduce((s, a) => s + a.envases, 0);
+        const manualCajasUsadas = isManual
+          ? foundInCaliral.reduce((s, c) => s + (c.cajas > 0 ? c.cajas : 0), 0)
+          : 0;
         const totalKgIngreso = aggs.reduce((s, a) => s + a.pesoNeto, 0);
         const envasesExp = exp.cantidadEnvases || 0;
         const kgExp = exp.pesoNeto || 0;
@@ -556,6 +624,7 @@ export default function CruceCaliral() {
           kgExp,
           diffEnvases: totalEnvasesIngreso - envasesExp,
           isManualLink: isManual,
+          manualCajasUsadas: isManual ? manualCajasUsadas : undefined,
         });
         foundInCaliral.forEach(c => referencedCotes.add(c.cote));
       } else {
@@ -579,6 +648,8 @@ export default function CruceCaliral() {
     setSinCruceRows(sinCruce.sort((a, b) => b.exp.fechaTramite.localeCompare(a.exp.fechaTramite)));
     setPendienteRows(pendientes.sort((a, b) => b.fecha.localeCompare(a.fecha)));
     setPaises([...new Set(editedExports.map(e => e.paisDestino).filter(Boolean))].sort());
+    setProductos([...new Set(editedExports.map(e => e.denominacionMercaderia).filter(Boolean))].sort());
+    setCortes([...new Set(editedExports.map(e => e.corte).filter(Boolean))].sort());
   }, []);
 
   useEffect(() => {
@@ -634,10 +705,23 @@ export default function CruceCaliral() {
 
   const addManualCote = () => {
     const cote = ef_newCote.trim().toUpperCase();
-    const cajas = parseInt(ef_newCoteCajas) || 0;
-    if (!cote || cajas <= 0) return;
-    if (ef_manualCotes.some(c => c.cote === cote)) return;
-    setEf_manualCotes(prev => [...prev, { cote, cajas }]);
+    if (!cote) return;
+    let cajas = parseInt(ef_newCoteCajas) || 0;
+    if (cajas <= 0 && ingresoMap.has(cote)) {
+      cajas = ingresoMap.get(cote)!.envases;
+    }
+    if (cajas <= 0) {
+      toast.error('Ingresá la cantidad de cajas');
+      return;
+    }
+    const existingIdx = ef_manualCotes.findIndex(c => c.cote === cote);
+    if (existingIdx >= 0) {
+      setEf_manualCotes(prev => prev.map((c, i) => i === existingIdx ? { ...c, cajas } : c));
+      toast.success(`${cote} actualizado: ${cajas} cajas`);
+    } else {
+      setEf_manualCotes(prev => [...prev, { cote, cajas }]);
+      toast.success(`${cote} agregado`);
+    }
     setEf_newCote('');
     setEf_newCoteCajas('');
   };
@@ -735,12 +819,26 @@ export default function CruceCaliral() {
     setEditOpen(false);
   };
 
-  const saveNewIngreso = () => {
-    const cote = ni_cote.trim().toUpperCase();
+  const saveNewIngreso = (overrideCote?: string, fromNotFoundView = false) => {
+    const cote = (overrideCote || ni_cote).trim().toUpperCase();
     if (!cote) return;
+    // Check if already exists in ingresoMap or in manual ingresos
+    if (ingresoMap.has(cote) || (edits.ingresosManuales || []).some(m => m.cote === cote)) {
+      toast.error(`${cote} ya existe en los ingresos`);
+      if (fromNotFoundView) {
+        // Force recompute to make sure ingresoMap is fresh
+        recomputeCruce(edits);
+      }
+      return;
+    }
+    const tramiteVal = parseInt(String(ni_tramite).trim()) || 0;
+    if (tramiteVal <= 0) {
+      toast.error('Ingresa el numero de tramite');
+      return;
+    }
     const newIngreso: ManualIngreso = {
       cote,
-      tramite: parseInt(ni_tramite) || 0,
+      tramite: tramiteVal,
       fecha: ni_fecha ? new Date(ni_fecha).toISOString() : new Date().toISOString(),
       producto: ni_producto,
       cortes: [],
@@ -755,7 +853,12 @@ export default function CruceCaliral() {
     setEdits(newEdits);
     saveEdits(newEdits);
     recomputeCruce(newEdits);
-    setAddIngresoOpen(false);
+    if (fromNotFoundView) {
+      // Keep the detail sheet open — ingresoMap will update and the detail will show the new data
+      toast.success(`${cote} creado y vinculado al cruce`);
+    } else {
+      setAddIngresoOpen(false);
+    }
     setNi_cote(''); setNi_tramite(''); setNi_fecha('');
     setNi_producto(''); setNi_cajas(''); setNi_pesoNeto(''); setNi_pesoBruto('');
   };
@@ -828,10 +931,26 @@ export default function CruceCaliral() {
         return d <= new Date(fechaHasta + 'T23:59:59').toISOString();
       });
     }
+    if (filtroProducto) {
+      rows = rows.filter(r => {
+        if ('exp' in r) {
+          return ((r as CruceRow | SinCruceRow).exp.denominacionMercaderia || '').toLowerCase().includes(filtroProducto.toLowerCase());
+        }
+        return (r as IngresoPendienteRow).producto.toLowerCase().includes(filtroProducto.toLowerCase());
+      });
+    }
+    if (filtroCorte) {
+      rows = rows.filter(r => {
+        if ('exp' in r) {
+          return ((r as CruceRow | SinCruceRow).exp.corte || '').toLowerCase().includes(filtroCorte.toLowerCase());
+        }
+        return (r as IngresoPendienteRow).cortes.some(c => c.toLowerCase().includes(filtroCorte.toLowerCase()));
+      });
+    }
     return rows;
-  }, [cruceRows, sinCruceRows, pendienteRows, subTab, search, pais, fechaDesde, fechaHasta]);
+  }, [cruceRows, sinCruceRows, pendienteRows, subTab, search, pais, fechaDesde, fechaHasta, filtroProducto, filtroCorte]);
 
-  useEffect(() => { setPage(1); }, [subTab, search, pais, fechaDesde, fechaHasta]);
+  useEffect(() => { setPage(1); }, [subTab, search, pais, fechaDesde, fechaHasta, filtroProducto, filtroCorte]);
 
   const pageData = filteredData.slice((page - 1) * limit, page * limit);
   const totalPages = Math.ceil(filteredData.length / limit);
@@ -856,8 +975,8 @@ export default function CruceCaliral() {
     };
   }, [ingresoMap, cruceRows, sinCruceRows, pendienteRows]);
 
-  const clearFilters = useCallback(() => { setSearch(''); setPais(''); setFechaDesde(''); setFechaHasta(''); }, []);
-  const hasFilters = search || pais || fechaDesde || fechaHasta;
+  const clearFilters = useCallback(() => { setSearch(''); setPais(''); setFechaDesde(''); setFechaHasta(''); setFiltroProducto(''); setFiltroCorte(''); }, []);
+  const hasFilters = search || pais || fechaDesde || fechaHasta || filtroProducto || filtroCorte;
   const detailType = detailRow ? ('exp' in detailRow ? ('ingresoCotes' in detailRow ? 'cruce' : 'sincruce') : 'pendiente') : null;
 
   const handleExport = async () => {
@@ -910,6 +1029,69 @@ export default function CruceCaliral() {
     XLSX.writeFile(wb, `cruce_caliral_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
+  const ALL_LS_KEYS = [
+    'trazabilidad_new_records',
+    'trazabilidad_exp_edits',
+    'trazabilidad_exp_deleted',
+    'trazabilidad_exp_ingresos',
+    'trazabilidad_dep_edits',
+    'trazabilidad_dep_new_records',
+    'trazabilidad_dep_deleted',
+    'cruce_caliral_edits',
+  ];
+
+  const handleBackup = () => {
+    const backup: Record<string, unknown> = {};
+    for (const key of ALL_LS_KEYS) {
+      try {
+        const val = localStorage.getItem(key);
+        if (val) backup[key] = JSON.parse(val);
+      } catch { /* skip */ }
+    }
+    backup._meta = { version: 1, fecha: new Date().toISOString(), page: 'trazabilidad_backup' };
+    const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `trazabilidad_backup_${new Date().toISOString().split('T')[0]}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success('Respaldo descargado');
+  };
+
+  const handleRestore = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    input.onchange = (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        try {
+          const data = JSON.parse(ev.target?.result as string);
+          if (!data._meta || data._meta.page !== 'trazabilidad_backup') {
+            toast.error('Archivo invalido - no es un respaldo de trazabilidad');
+            return;
+          }
+          let count = 0;
+          for (const key of ALL_LS_KEYS) {
+            if (data[key] !== undefined) {
+              localStorage.setItem(key, JSON.stringify(data[key]));
+              count++;
+            }
+          }
+          toast.success(`Restaurados ${count} campos. Recargando...`);
+          setTimeout(() => window.location.reload(), 1000);
+        } catch {
+          toast.error('Error al leer el archivo');
+        }
+      };
+      reader.readAsText(file);
+    };
+    input.click();
+  };
+
   function diffBadgeEnvases(diff: number) {
     if (diff === 0) return <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full"><CheckCircle2 className="h-3 w-3" />0</span>;
     if (diff < 0) {
@@ -918,6 +1100,13 @@ export default function CruceCaliral() {
     return <span className="inline-flex items-center text-xs font-bold text-sky-700 bg-sky-50 px-2 py-0.5 rounded-full">+{diff} cajas</span>;
   }
 
+  const openIngresoDetail = (cote: string) => {
+    setIngresoDetailCote(cote);
+    setDetailOpen(true);
+  };
+  const closeIngresoDetail = () => {
+    setIngresoDetailCote(null);
+  };
   const isEdited = (type: 'export' | 'ingreso', id: string) => type === 'export' ? !!edits.exports[id] : !!edits.ingresos[id];
 
   if (loading) return <div className="p-6 space-y-4"><h2 className="text-2xl font-bold text-slate-800">Cruce Caliral</h2><Skeleton className="h-96" /></div>;
@@ -932,6 +1121,12 @@ export default function CruceCaliral() {
           <span className="text-sm font-normal text-slate-400 ml-2">Trazabilidad por cajas (envases)</span>
         </h2>
         <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={handleBackup} title="Descargar respaldo de todos tus datos">
+            <Download className="h-4 w-4 mr-2" />Respaldo
+          </Button>
+          <Button variant="outline" size="sm" onClick={handleRestore} title="Restaurar datos desde un archivo de respaldo">
+            <Upload className="h-4 w-4 mr-2" />Restaurar
+          </Button>
           <Button variant="outline" size="sm" onClick={handleExport}>
             <Download className="h-4 w-4 mr-2" />Exportar Excel
           </Button>
@@ -977,7 +1172,7 @@ export default function CruceCaliral() {
       {/* Info banner */}
       <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs text-slate-600">
         <p className="font-medium text-slate-700 mb-1">Como funciona el cruce</p>
-        <p>Se extraen los COTEs de ingreso desde las <b>observaciones</b> de cada exportacion. Se comparan las <b>cajas (envases)</b> exportadas contra las cajas que ingresaron con esos COTEs a Caliral. La diferencia negativa (roja) indica que se exportaron mas cajas de las que ingresaron, lo cual es un error. La diferencia positiva (azul) es normal: significa que no todas las cajas de esos COTEs fueron en esa exportacion (pueden ir en otra o estar pendientes). La mayoria de las exportaciones no tienen COTE de ingreso en observaciones, por lo que aparecen en &quot;Sin COTE de ingreso&quot;. <b>Podes editar cualquier registro haciendo click en el lapiz</b>. Las ediciones se guardan en el navegador.</p>
+        <p>Se extraen los COTEs de ingreso desde las <b>observaciones</b> de cada exportacion. Se comparan las <b>cajas (envases)</b> exportadas contra los <b>totales de cajas en A Depositos</b> para esos COTEs. La diferencia negativa (roja) indica que se exportaron mas cajas de las que ingresaron, lo cual es un error. La diferencia positiva (azul) es normal: significa que no todas las cajas de esos COTEs fueron en esa exportacion (pueden ir en otra o estar pendientes). Si vinculaste COTEs manualmente, el campo "cajas" indica cuantas de cada COTE se usaron en la exportacion, pero la diferencia se calcula igual contra los totales de depositos. <b>Podes editar cualquier registro haciendo click en el lapiz</b>. Las ediciones se guardan en el navegador.</p>
       </div>
 
       {/* Sub-tabs + Filters */}
@@ -1005,12 +1200,20 @@ export default function CruceCaliral() {
           </div>
           {subTab !== 'pendientes' && (
             <Select value={pais} onValueChange={v => setPais(v)}>
-              <SelectTrigger className="w-[180px]"><SelectValue placeholder="Pais" /></SelectTrigger>
+              <SelectTrigger className="w-[150px]"><SelectValue placeholder="Pais" /></SelectTrigger>
               <SelectContent>{paises.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}</SelectContent>
             </Select>
           )}
-          <Input type="date" value={fechaDesde} onChange={e => setFechaDesde(e.target.value)} className="w-[150px]" />
-          <Input type="date" value={fechaHasta} onChange={e => setFechaHasta(e.target.value)} className="w-[150px]" />
+          <Select value={filtroProducto} onValueChange={v => setFiltroProducto(v)}>
+            <SelectTrigger className="w-[220px]"><SelectValue placeholder="Producto" /></SelectTrigger>
+            <SelectContent>{productos.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}</SelectContent>
+          </Select>
+          <Select value={filtroCorte} onValueChange={v => setFiltroCorte(v)}>
+            <SelectTrigger className="w-[150px]"><SelectValue placeholder="Corte" /></SelectTrigger>
+            <SelectContent>{cortes.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
+          </Select>
+          <Input type="date" value={fechaDesde} onChange={e => setFechaDesde(e.target.value)} className="w-[140px]" />
+          <Input type="date" value={fechaHasta} onChange={e => setFechaHasta(e.target.value)} className="w-[140px]" />
         </div>
       </CardContent></Card>
 
@@ -1039,7 +1242,9 @@ export default function CruceCaliral() {
                   <tr><td colSpan={11} className="text-center py-10 text-slate-400">No se encontraron registros</td></tr>
                 ) : (pageData as CruceRow[]).map(r => (
                   <tr key={r.exp.id} className={`border-b cursor-pointer ${r.diffEnvases < 0 ? 'hover:bg-red-50/40' : 'hover:bg-orange-50/40'} ${isEdited('export', r.exp.id) ? 'bg-violet-50/30' : ''}`} onClick={() => { setDetailRow(r); setDetailOpen(true); }}>
-                    <td className="px-3 py-2.5 text-xs font-mono font-medium text-blue-700">{r.exp.nroCote}</td>
+                    <td className="px-3 py-2.5 text-xs font-mono font-medium text-blue-700">
+                      <button onClick={(e) => { e.stopPropagation(); setIngresoDetailCote(null); setDetailRow(r); setDetailOpen(true); }} className="hover:underline cursor-pointer">{r.exp.nroCote}</button>
+                    </td>
                     <td className="px-3 py-2.5 text-xs font-mono">{r.exp.nroTramite}</td>
                     <td className="px-3 py-2.5 text-xs">{fd(r.exp.fechaTramite)}</td>
                     <td className="px-3 py-2.5 text-xs">{r.exp.paisDestino}</td>
@@ -1049,10 +1254,10 @@ export default function CruceCaliral() {
                       <div className="flex flex-wrap gap-1">
                         {r.isManualLink && <span className="inline-block bg-violet-100 text-violet-800 text-[9px] font-bold px-1 py-0.5 rounded">MANUAL</span>}
                         {r.ingresoCotes.map(c => (
-                          <span key={c} className="inline-block bg-emerald-100 text-emerald-800 text-[10px] font-mono px-1.5 py-0.5 rounded">{c}</span>
+                          <button key={c} onClick={(e) => { e.stopPropagation(); openIngresoDetail(c); }} className="inline-block bg-emerald-100 text-emerald-800 text-[10px] font-mono px-1.5 py-0.5 rounded hover:bg-emerald-200 hover:underline cursor-pointer transition-colors">{c}</button>
                         ))}
                         {r.ingresoCotesNotFound.map(c => (
-                          <span key={c} title="No encontrado en ingresos Caliral" className="inline-block bg-red-100 text-red-700 text-[10px] font-mono px-1.5 py-0.5 rounded">{c}</span>
+                          <button key={c} title="No encontrado en ingresos Caliral" onClick={(e) => { e.stopPropagation(); openIngresoDetail(c); }} className="inline-block bg-red-100 text-red-700 text-[10px] font-mono px-1.5 py-0.5 rounded hover:bg-red-200 hover:underline cursor-pointer transition-colors">{c}</button>
                         ))}
                       </div>
                     </td>
@@ -1106,7 +1311,7 @@ export default function CruceCaliral() {
                 {pageData.length === 0 ? (
                   <tr><td colSpan={8} className="text-center py-10 text-slate-400">No se encontraron registros</td></tr>
                 ) : (pageData as SinCruceRow[]).map(r => (
-                  <SinCruceInlineRow key={r.exp.id} row={r} ingresoMap={ingresoMap} edits={edits} onSaved={(newEdits) => { setEdits(newEdits); saveEdits(newEdits); recomputeCruce(newEdits); }} onEditFull={() => openExportEdit(r)} isEditedFlag={isEdited('export', r.exp.id)} />
+                  <SinCruceInlineRow key={r.exp.id} row={r} ingresoMap={ingresoMap} edits={edits} onSaved={(newEdits) => { setEdits(newEdits); saveEdits(newEdits); recomputeCruce(newEdits); }} onEditFull={() => openExportEdit(r)} onViewDetail={() => { setIngresoDetailCote(null); setDetailRow(r); setDetailOpen(true); }} isEditedFlag={isEdited('export', r.exp.id)} />
                 ))}
               </tbody>
             </table>
@@ -1138,7 +1343,7 @@ export default function CruceCaliral() {
                   <tr><td colSpan={8} className="text-center py-10 text-slate-400">No se encontraron registros</td></tr>
                 ) : (pageData as IngresoPendienteRow[]).map(r => (
                   <tr key={r.cote} className={`border-b hover:bg-orange-50/40 cursor-pointer ${isEdited('ingreso', r.cote) ? 'bg-violet-50/30' : ''}`} onClick={() => { setDetailRow(r); setDetailOpen(true); }}>
-                    <td className="px-3 py-2.5 text-xs font-mono font-medium text-orange-700">{r.cote}</td>
+                    <td className="px-3 py-2.5 text-xs font-mono font-medium text-orange-700"><button onClick={(e) => { e.stopPropagation(); setIngresoDetailCote(null); setDetailRow(r); setDetailOpen(true); }} className="hover:underline cursor-pointer">{r.cote}</button></td>
                     <td className="px-3 py-2.5 text-xs font-mono">{r.tramite}</td>
                     <td className="px-3 py-2.5 text-xs">{fd(r.fecha)}</td>
                     <td className="px-3 py-2.5 text-xs hidden lg:table-cell max-w-[200px] truncate">{r.producto}</td>
@@ -1172,9 +1377,96 @@ export default function CruceCaliral() {
       </CardContent></Card>
 
       {/* Detail Sheet (read-only) */}
-      <Sheet open={detailOpen} onOpenChange={setDetailOpen}>
+      <Sheet open={detailOpen} onOpenChange={(open) => { if (!open) { setDetailOpen(false); setIngresoDetailCote(null); } else { setDetailOpen(true); } }}>
         <SheetContent className="sm:max-w-xl overflow-y-auto">
-          {detailRow && detailType === 'cruce' && (() => {
+          {/* Ingreso COTE detail view */}
+          {ingresoDetailCote && (() => {
+            const agg = ingresoMap.get(ingresoDetailCote);
+            return (<>
+              <SheetHeader>
+                <SheetTitle className="flex items-center gap-2">
+                  <button onClick={closeIngresoDetail} className="p-1 rounded hover:bg-slate-100 mr-1"><ChevronLeft className="h-5 w-5" /></button>
+                  Ingreso COTE {ingresoDetailCote}
+                </SheetTitle>
+              </SheetHeader>
+              <div className="mt-6 space-y-4 text-sm">
+                {agg ? (<>
+                  <div className="bg-emerald-50 rounded-lg p-3 space-y-1">
+                    {[
+                      ['COTE', agg.cote], ['Nro. Tramite', String(agg.tramite)],
+                      ['Fecha', fd(agg.fecha)], ['Producto', agg.producto],
+                      ['Cortes', agg.cortes.join(', ')], ['Lineas', String(agg.lineCount)],
+                      ['Cajas (envases)', agg.envases.toLocaleString('es-UY')],
+                      ['Peso Bruto', agg.pesoBruto.toLocaleString('es-UY') + ' kg'],
+                      ['Peso Neto', agg.pesoNeto.toLocaleString('es-UY') + ' kg'],
+                    ].map(([l, v]) => (
+                      <div key={l} className="flex justify-between gap-4"><span className="text-slate-500 text-xs">{l}</span><span className="text-slate-800 text-xs text-right font-medium break-all">{v}</span></div>
+                    ))}
+                  </div>
+                  {agg.lines.length > 0 && (
+                    <div>
+                      <p className="text-[10px] text-slate-500 uppercase mb-1">Lineas del ingreso</p>
+                      <div className="max-h-[400px] overflow-y-auto border rounded">
+                        <table className="w-full text-[11px]">
+                          <thead className="sticky top-0 bg-slate-100"><tr>
+                            <th className="px-2 py-1 text-left">Linea</th>
+                            <th className="px-2 py-1 text-left">Corte</th>
+                            <th className="px-2 py-1 text-right">Cajas</th>
+                            <th className="px-2 py-1 text-right">Peso Bruto</th>
+                            <th className="px-2 py-1 text-right">Peso Neto</th>
+                          </tr></thead>
+                          <tbody>
+                            {agg.lines.map((l, i) => (
+                              <tr key={i} className="border-t">
+                                <td className="px-2 py-1">{String((l as Record<string, unknown>).idLinea ?? i + 1)}</td>
+                                <td className="px-2 py-1">{l.corte}</td>
+                                <td className="px-2 py-1 text-right font-mono">{l.cantidadEnvases ?? '-'}</td>
+                                <td className="px-2 py-1 text-right font-mono">{l.pesoBruto ? l.pesoBruto.toLocaleString('es-UY') : '-'}</td>
+                                <td className="px-2 py-1 text-right font-mono">{l.pesoNeto ? l.pesoNeto.toLocaleString('es-UY') : '-'}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                  <button onClick={closeIngresoDetail} className="w-full text-center text-xs text-blue-600 hover:text-blue-800 py-2 rounded-lg border border-blue-200 hover:bg-blue-50 transition-colors">
+                    Volver al detalle de la exportacion
+                  </button>
+                </>) : (
+                  <div className="space-y-4">
+                    <div className="bg-orange-50 rounded-lg p-4 text-xs text-orange-800">
+                      <p className="font-bold mb-1">COTE {ingresoDetailCote} no encontrado en los ingresos a Caliral.</p>
+                      <p>Puede ser un COTE que no ingreso a Caliral, o un error en el numero. Crealo manualmente abajo para vincularlo.</p>
+                    </div>
+                    <div className="border-2 border-dashed border-emerald-200 rounded-lg p-4 bg-emerald-50/50">
+                      <p className="text-xs font-bold text-emerald-700 uppercase tracking-wide mb-3">Crear ingreso manual para {ingresoDetailCote}</p>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div><FieldLabel>Tramite</FieldLabel><Input inputMode="numeric" value={ni_tramite} onChange={e => setNi_tramite(e.target.value)} placeholder="19282" className="h-8 text-xs font-mono" /></div>
+                        <div><FieldLabel>Fecha</FieldLabel><Input type="date" value={ni_fecha} onChange={e => setNi_fecha(e.target.value)} className="h-8 text-xs" /></div>
+                        <div className="col-span-2"><FieldLabel>Producto</FieldLabel><Input value={ni_producto} onChange={e => setNi_producto(e.target.value)} placeholder="Menudencias bovinas..." className="h-8 text-xs" /></div>
+                        <div><FieldLabel>Cajas (envases)</FieldLabel><Input inputMode="numeric" value={ni_cajas} onChange={e => setNi_cajas(e.target.value)} placeholder="90" className="h-8 text-xs font-mono" /></div>
+                        <div><FieldLabel>Kg Neto</FieldLabel><Input inputMode="numeric" value={ni_pesoNeto} onChange={e => setNi_pesoNeto(e.target.value)} placeholder="2500" className="h-8 text-xs font-mono" /></div>
+                        <div><FieldLabel>Kg Bruto</FieldLabel><Input inputMode="numeric" value={ni_pesoBruto} onChange={e => setNi_pesoBruto(e.target.value)} placeholder="2800" className="h-8 text-xs font-mono" /></div>
+                      </div>
+                      <div className="flex gap-2 mt-3">
+                        <Button size="sm" onClick={() => { saveNewIngreso(ingresoDetailCote, true); }} className="flex-1" disabled={!ni_tramite.trim()}>
+                          <Save className="h-4 w-4 mr-2" />Crear y vincular
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={closeIngresoDetail}>Cancelar</Button>
+                      </div>
+                    </div>
+                    <button onClick={closeIngresoDetail} className="w-full text-center text-xs text-blue-600 hover:text-blue-800 py-2 rounded-lg border border-blue-200 hover:bg-blue-50 transition-colors">
+                      Volver al detalle de la exportacion
+                    </button>
+                  </div>
+                )}
+              </div>
+            </>);
+          })()}
+
+          {/* Original detail views (only when no ingreso detail is active) */}
+          {!ingresoDetailCote && detailRow && detailType === 'cruce' && (() => {
             const r = detailRow as CruceRow;
             return (<>
               <SheetHeader><SheetTitle className="flex items-center gap-2"><ArrowLeftRight className="h-5 w-5 text-orange-600" />Cruce — Exportacion COTE {r.exp.nroCote}</SheetTitle></SheetHeader>
@@ -1205,12 +1497,15 @@ export default function CruceCaliral() {
                 {r.isManualLink && (
                   <div className="bg-violet-50 border border-violet-200 rounded-lg p-2 text-xs text-violet-800">
                     <p className="font-bold">Vinculacion manual de COTEs de ingreso</p>
+                    {r.manualCajasUsadas !== undefined && r.manualCajasUsadas > 0 && (
+                      <p className="mt-1">Cajas usadas de estos COTEs en esta exportacion: <b>{r.manualCajasUsadas.toLocaleString('es-UY')}</b> (de {r.totalEnvasesIngreso.toLocaleString('es-UY')} totales en depositos)</p>
+                    )}
                   </div>
                 )}
                 <div className={`rounded-lg p-4 ${r.diffEnvases < 0 ? 'bg-red-50 border border-red-200' : 'bg-slate-50'}`}>
                   <p className="text-xs font-bold text-slate-600 uppercase tracking-wide mb-3">Balance por Cajas (Envases)</p>
                   <div className="grid grid-cols-3 gap-3 text-center">
-                    <div><p className="text-[10px] text-slate-400">Cajas Ingresadas</p><p className="text-xl font-bold text-emerald-700">{r.totalEnvasesIngreso.toLocaleString('es-UY')}</p></div>
+                    <div><p className="text-[10px] text-slate-400">{r.isManualLink ? 'Cajas en Depositos' : 'Cajas Ingresadas'}</p><p className="text-xl font-bold text-emerald-700">{r.totalEnvasesIngreso.toLocaleString('es-UY')}</p></div>
                     <div><p className="text-[10px] text-slate-400">Cajas Exportadas</p><p className="text-xl font-bold text-blue-700">{r.envasesExp.toLocaleString('es-UY')}</p></div>
                     <div><p className="text-[10px] text-slate-400">Diferencia</p><div className="flex justify-center">{diffBadgeEnvases(r.diffEnvases)}</div></div>
                   </div>
@@ -1237,7 +1532,7 @@ export default function CruceCaliral() {
                     {r.ingresoAgg.map(agg => (
                       <div key={agg.cote} className="border rounded-lg p-3 bg-emerald-50/50">
                         <div className="flex items-center justify-between mb-1">
-                          <span className="font-mono font-bold text-emerald-700 text-sm">{agg.cote}</span>
+                          <button onClick={() => openIngresoDetail(agg.cote)} className="font-mono font-bold text-emerald-700 text-sm hover:underline cursor-pointer">{agg.cote}</button>
                           <span className="text-xs text-slate-500">Tramite {agg.tramite} — {fd(agg.fecha)}</span>
                         </div>
                         <div className="text-xs text-slate-600 space-y-0.5">
@@ -1269,7 +1564,7 @@ export default function CruceCaliral() {
             </>);
           })()}
 
-          {detailRow && detailType === 'sincruce' && (() => {
+          {!ingresoDetailCote && detailRow && detailType === 'sincruce' && (() => {
             const r = detailRow as SinCruceRow;
             return (<>
               <SheetHeader><SheetTitle className="flex items-center gap-2"><Unlink className="h-5 w-5 text-amber-600" />Sin COTE de Ingreso — {r.exp.nroCote}</SheetTitle></SheetHeader>
@@ -1301,7 +1596,7 @@ export default function CruceCaliral() {
             </>);
           })()}
 
-          {detailRow && detailType === 'pendiente' && (() => {
+          {!ingresoDetailCote && detailRow && detailType === 'pendiente' && (() => {
             const r = detailRow as IngresoPendienteRow;
             const agg = ingresoMap.get(r.cote);
             return (<>
@@ -1410,26 +1705,31 @@ export default function CruceCaliral() {
                   <p className="text-xs font-bold text-violet-700 uppercase tracking-wide mb-2">
                     COTEs de Ingreso (vinculacion manual)
                   </p>
-                  <p className="text-[11px] text-slate-500 mb-3">Agrega los COTEs de ingreso que corresponden a esta exportacion y la cantidad de cajas usadas de cada uno. Esto reemplaza la deteccion automatica desde observaciones.</p>
+                  <p className="text-[11px] text-slate-500 mb-3">Agrega los COTEs de ingreso y la cantidad de cajas de cada uno que se usaron en esta exportacion. La diferencia se calcula contra los totales de A Depositos.</p>
 
                   {ef_manualCotes.length > 0 && (
                     <div className="space-y-2 mb-3">
-                      {ef_manualCotes.map(mc => (
+                      {ef_manualCotes.map(mc => {
+                        const depTotal = ingresoMap.get(mc.cote)?.envases || 0;
+                        return (
                         <div key={mc.cote} className="flex items-center gap-2 bg-white border rounded-md px-3 py-2">
                           <span className="font-mono text-sm font-bold text-emerald-700 flex-1">{mc.cote}</span>
-                          <span className="text-xs text-slate-500">cajas:</span>
+                          <span className="text-[10px] text-slate-400">depósito:{depTotal}</span>
+                          <span className="text-xs text-slate-500">usadas:</span>
                           <Input type="number" value={mc.cajas} onChange={e => {
                             const val = parseInt(e.target.value) || 0;
                             setEf_manualCotes(prev => prev.map(c => c.cote === mc.cote ? { ...c, cajas: val } : c));
                           }} className="w-20 h-7 text-xs text-right font-mono" />
                           <button onClick={() => removeManualCote(mc.cote)} className="p-1 rounded hover:bg-red-100"><Trash2 className="h-3.5 w-3.5 text-red-500" /></button>
                         </div>
-                      ))}
-                      <div className="text-xs text-right text-slate-500">
-                        Total cajas ingreso: <span className="font-bold text-slate-800">{ef_manualCotes.reduce((s, c) => s + c.cajas, 0).toLocaleString('es-UY')}</span>
+                        );
+                      })}
+                      <div className="text-xs text-right text-slate-500 space-y-0.5">
+                        <div>Usadas en esta exp.: <span className="font-bold text-violet-700">{ef_manualCotes.reduce((s, c) => s + c.cajas, 0).toLocaleString('es-UY')}</span></div>
+                        <div>Total en depósitos: <span className="font-bold text-emerald-700">{ef_manualCotes.reduce((s, c) => s + (ingresoMap.get(c.cote)?.envases || 0), 0).toLocaleString('es-UY')}</span></div>
                         {ef_cajas && (
-                          <> — Exportadas: <span className="font-bold text-blue-700">{parseInt(ef_cajas || '0').toLocaleString('es-UY')}</span>
-                          {' '}(diff: <span className={ef_manualCotes.reduce((s, c) => s + c.cajas, 0) - parseInt(ef_cajas || '0') < 0 ? 'text-red-600' : 'text-emerald-600'}>{(ef_manualCotes.reduce((s, c) => s + c.cajas, 0) - parseInt(ef_cajas || '0')).toLocaleString('es-UY')}</span>)</>
+                          <div>Exportadas: <span className="font-bold text-blue-700">{parseInt(ef_cajas || '0').toLocaleString('es-UY')}</span>
+                          {' — diff depósitos: '}<span className={ef_manualCotes.reduce((s, c) => s + (ingresoMap.get(c.cote)?.envases || 0), 0) - parseInt(ef_cajas || '0') < 0 ? 'text-red-600 font-bold' : 'text-emerald-600'}>{(ef_manualCotes.reduce((s, c) => s + (ingresoMap.get(c.cote)?.envases || 0), 0) - parseInt(ef_cajas || '0')).toLocaleString('es-UY')}</span></div>
                         )}
                       </div>
                     </div>
@@ -1444,7 +1744,7 @@ export default function CruceCaliral() {
                       <FieldLabel>Cajas</FieldLabel>
                       <Input type="number" value={ef_newCoteCajas} onChange={e => setEf_newCoteCajas(e.target.value)} placeholder="0" className="h-8 text-xs font-mono text-right" onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addManualCote(); } }} />
                     </div>
-                    <Button size="sm" variant="outline" onClick={addManualCote} className="h-8 mb-0.5" disabled={!ef_newCote.trim() || !ef_newCoteCajas}>
+                    <Button size="sm" variant="outline" onClick={addManualCote} className="h-8 mb-0.5" disabled={!ef_newCote.trim()}>
                       <Plus className="h-3.5 w-3.5 mr-1" />Agregar
                     </Button>
                   </div>
@@ -1517,15 +1817,15 @@ export default function CruceCaliral() {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div><FieldLabel>COTE</FieldLabel><Input value={ni_cote} onChange={e => setNi_cote(e.target.value.toUpperCase())} placeholder="P12345" className="h-8 text-xs font-mono" /></div>
-              <div><FieldLabel>Tramite</FieldLabel><Input type="number" value={ni_tramite} onChange={e => setNi_tramite(e.target.value)} className="h-8 text-xs font-mono" /></div>
+              <div><FieldLabel>Tramite</FieldLabel><Input inputMode="numeric" value={ni_tramite} onChange={e => setNi_tramite(e.target.value)} className="h-8 text-xs font-mono" /></div>
               <div><FieldLabel>Fecha</FieldLabel><Input type="date" value={ni_fecha} onChange={e => setNi_fecha(e.target.value)} className="h-8 text-xs" /></div>
               <div><FieldLabel>Producto</FieldLabel><Input value={ni_producto} onChange={e => setNi_producto(e.target.value)} className="h-8 text-xs" /></div>
-              <div><FieldLabel>Cajas (envases)</FieldLabel><Input type="number" value={ni_cajas} onChange={e => setNi_cajas(e.target.value)} className="h-8 text-xs font-mono" /></div>
-              <div><FieldLabel>Kg Neto</FieldLabel><Input type="number" value={ni_pesoNeto} onChange={e => setNi_pesoNeto(e.target.value)} className="h-8 text-xs font-mono" /></div>
-              <div><FieldLabel>Kg Bruto</FieldLabel><Input type="number" value={ni_pesoBruto} onChange={e => setNi_pesoBruto(e.target.value)} className="h-8 text-xs font-mono" /></div>
+              <div><FieldLabel>Cajas (envases)</FieldLabel><Input inputMode="numeric" value={ni_cajas} onChange={e => setNi_cajas(e.target.value)} className="h-8 text-xs font-mono" /></div>
+              <div><FieldLabel>Kg Neto</FieldLabel><Input inputMode="numeric" value={ni_pesoNeto} onChange={e => setNi_pesoNeto(e.target.value)} className="h-8 text-xs font-mono" /></div>
+              <div><FieldLabel>Kg Bruto</FieldLabel><Input inputMode="numeric" value={ni_pesoBruto} onChange={e => setNi_pesoBruto(e.target.value)} className="h-8 text-xs font-mono" /></div>
             </div>
             <div className="flex gap-2 pt-2 border-t">
-              <Button size="sm" onClick={saveNewIngreso} className="flex-1" disabled={!ni_cote.trim()}>
+              <Button size="sm" onClick={saveNewIngreso} className="flex-1" disabled={!ni_cote.trim() || !ni_tramite.trim()}>
                 <Save className="h-4 w-4 mr-2" />Guardar
               </Button>
               <Button size="sm" variant="outline" onClick={() => setAddIngresoOpen(false)}>Cancelar</Button>

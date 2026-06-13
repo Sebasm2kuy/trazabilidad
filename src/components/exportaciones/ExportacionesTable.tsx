@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useAppStore } from '@/store/useAppStore';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -9,9 +9,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
-import { Search, X, ChevronLeft, ChevronRight, Eye, FileCheck, Download, Ship, Pencil, Save, RotateCcw, CheckCircle2 } from 'lucide-react';
+import { Search, X, ChevronLeft, ChevronRight, Eye, FileCheck, Download, Ship, Pencil, Save, RotateCcw, CheckCircle2, Plus, Trash2, Package, Upload, Loader2 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
-import type { Shipment } from '@/lib/types';
+import type { Shipment, ExpRecord } from '@/lib/types';
+import { parseCotePdf, coteToExpRecord } from '@/lib/parseCotePdf';
+import { schedulePush } from '@/lib/googleSheets';
 
 function fd(d: string | null | undefined) { if (!d) return '-'; try { return new Date(d).toLocaleDateString('es-UY', { day: '2-digit', month: '2-digit', year: 'numeric' }); } catch { return '-'; } }
 function fdt(d: string | null | undefined) { if (!d) return '-'; try { return new Date(d).toLocaleDateString('es-UY', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }); } catch { return '-'; } }
@@ -19,35 +21,27 @@ function fmt(n: number) { if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M
 
 const COLORS = ['#059669', '#10b981', '#34d399', '#6ee7b7', '#a7f3d0', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899'];
 
-// Extend Shipment with all exportacion-specific fields
-interface ExpRecord extends Shipment {
-  papelSeguridad?: string;
-  recibidaFechaHora?: string;
-  recepcionServicio?: string;
-  inspeccionExteriorConforme?: string;
-  contenedorSerieNro?: string;
-  matriculaAvion?: string;
-  precinto2?: string;
-  precinto3?: string;
-  precinto4?: string;
-  precintoAgencia?: string;
-  guiaINAC?: string;
-  correspondeAbrirContenedor?: string;
-  validezMercaderia?: string;
-  recibidaTemperatura?: string | number;
-  recepcionObservaciones?: string;
-  recepcionUsuario?: string;
-  obsInspeccionExterior?: string;
-  contenedorInspeccion?: string;
-  avionInspeccion?: string;
-  camionInspeccion?: string;
-  inspPrecinto1?: string;
-  inspPrecinto2?: string;
-  inspPrecinto3?: string;
-  inspPrecinto4?: string;
-}
+// ExpRecord is now imported from @/lib/types
 
 const EXP_EDITS_KEY = 'trazabilidad_exp_edits';
+const EXP_INGRESOS_KEY = 'trazabilidad_exp_ingresos';
+const EXP_DELETED_KEY = 'trazabilidad_exp_deleted';
+const EXP_NEW_RECORDS_KEY = 'trazabilidad_new_records';
+const EXP_PAGE_LIMIT = 20;
+
+interface IngresoCote {
+  cote: string;
+  cajas: number | '';
+}
+
+function loadIngresos(): Record<string, IngresoCote[]> {
+  try { const r = localStorage.getItem(EXP_INGRESOS_KEY); return r ? JSON.parse(r) : {}; } catch { return {}; }
+}
+
+function saveIngresos(data: Record<string, IngresoCote[]>) {
+  localStorage.setItem(EXP_INGRESOS_KEY, JSON.stringify(data));
+  schedulePush();
+}
 
 const expCache: { data: ExpRecord[]; loaded: boolean; analytics: Record<string, unknown> | null } = { data: [], loaded: false, analytics: null };
 
@@ -69,6 +63,7 @@ function loadEdits(): Record<string, Partial<ExpRecord>> {
 
 function saveEdits(edits: Record<string, Partial<ExpRecord>>) {
   localStorage.setItem(EXP_EDITS_KEY, JSON.stringify(edits));
+  schedulePush();
 }
 
 function applyEdits(data: ExpRecord[], edits: Record<string, Partial<ExpRecord>>): ExpRecord[] {
@@ -159,7 +154,7 @@ const SECTIONS: { title: string; fields: FieldDef[] }[] = [
       { key: 'recepcionServicio', label: 'Recepción Servicio', type: 'text' },
       { key: 'recepcionUsuario', label: 'Recepción Usuario', type: 'text' },
       { key: 'recepcionObservaciones', label: 'Obs. Recepción', type: 'textarea' },
-      { key: 'inspeccionExteriorConforme', label: 'Insp. Ext. Conforme', type: 'select', options: ['SI', 'NO', ''] },
+      { key: 'inspeccionExteriorConforme', label: 'Insp. Ext. Conforme', type: 'select', options: ['SI', 'NO'] },
       { key: 'contenedorInspeccion', label: 'Contenedor Inspección', type: 'text' },
       { key: 'avionInspeccion', label: 'Avión Inspección', type: 'text' },
       { key: 'camionInspeccion', label: 'Camión Inspección', type: 'text' },
@@ -168,7 +163,7 @@ const SECTIONS: { title: string; fields: FieldDef[] }[] = [
       { key: 'inspPrecinto3', label: 'Insp. Precinto 3', type: 'text' },
       { key: 'inspPrecinto4', label: 'Insp. Precinto 4', type: 'text' },
       { key: 'obsInspeccionExterior', label: 'Obs. Insp. Exterior', type: 'textarea' },
-      { key: 'correspondeAbrirContenedor', label: 'Corresponde Abrir Cont.', type: 'select', options: ['SI', 'NO', ''] },
+      { key: 'correspondeAbrirContenedor', label: 'Corresponde Abrir Cont.', type: 'select', options: ['SI', 'NO'] },
       { key: 'validezMercaderia', label: 'Validez Mercadería', type: 'text' },
     ],
   },
@@ -200,22 +195,44 @@ export default function ExportacionesTable() {
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [detailOpen, setDetailOpen] = useState(false);
-  const [selected, setSelected] = useState<ExpRecord | null>(null);
+  const selectedState = useState<ExpRecord | null>(null);
+  const selected = selectedState[0];
+  const setSelected = selectedState[1];
   const [editMode, setEditMode] = useState(false);
   const [editForm, setEditForm] = useState<Record<string, string>>({});
   const [edits, setEdits] = useState<Record<string, Partial<ExpRecord>>>(loadEdits);
+  const [ingresosCotes, setIngresosCotes] = useState<Record<string, IngresoCote[]>>(loadIngresos);
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
   const [options, setOptions] = useState({ paises: [] as string[], productos: [] as string[], destinos: [] as string[] });
   const [cotes, setCotes] = useState<string[]>([]);
   const [coteOpen, setCoteOpen] = useState(false);
   const [coteSearch, setCoteSearch] = useState('');
   const [showCharts, setShowCharts] = useState(true);
-  const [showAll, setShowAll] = useState(true);
-  const limit = showAll ? 99999 : 20;
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const [pdfError, setPdfError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Delete record state (declared early so useEffects can reference it)
+  const [deletedIds, setDeletedIds] = useState<Set<string>>(() => {
+    try { const r = localStorage.getItem(EXP_DELETED_KEY); return new Set(r ? JSON.parse(r) : []); } catch { return new Set(); }
+  });
 
   useEffect(() => {
     (async () => {
       await ensureExp();
+      // Load new records from localStorage (PDF uploads) and merge into cache
+      try {
+        const raw = localStorage.getItem(EXP_NEW_RECORDS_KEY);
+        if (raw) {
+          const newRecs: ExpRecord[] = JSON.parse(raw);
+          const existingIds = new Set(expCache.data.map(e => e.id));
+          for (const nr of newRecs) {
+            if (!existingIds.has(nr.id)) {
+              expCache.data.push(nr);
+            }
+          }
+        }
+      } catch { /* ignore */ }
       const a = expCache.analytics!;
       setOptions({
         paises: (a.byPais || []).map((p: { pais: string }) => p.pais).filter(Boolean),
@@ -236,6 +253,8 @@ export default function ExportacionesTable() {
       await ensureExp();
       if (cancelled) return;
       let filtered = applyEdits([...expCache.data], edits);
+      // Exclude deleted records
+      filtered = filtered.filter(s => !deletedIds.has(s.id));
       const { search, pais, producto, destino, cote, fechaDesde, fechaHasta } = expFilters;
 
       if (search) {
@@ -258,11 +277,11 @@ export default function ExportacionesTable() {
       if (fechaHasta) filtered = filtered.filter(sh => sh.fechaTramite <= new Date(fechaHasta + 'T23:59:59').toISOString());
 
       const t = filtered.length;
-      setData(filtered.slice((page - 1) * limit, page * limit));
+      setData(filtered.slice((page - 1) * EXP_PAGE_LIMIT, page * EXP_PAGE_LIMIT));
       setTotal(t);
     })();
     return () => { cancelled = true; };
-  }, [page, expFilters, limit, edits]);
+  }, [page, expFilters, EXP_PAGE_LIMIT, edits, deletedIds]);
 
   useEffect(() => { setPage(1); }, [expFilters]);
 
@@ -377,9 +396,144 @@ export default function ExportacionesTable() {
     return key in edits[selected.id]!;
   }, [selected, edits]);
 
+  // Delete record
+  const handleDelete = useCallback((s: ExpRecord) => {
+    if (!confirm(`¿Eliminar exportación #${s.nroTramite} (${s.nroCote})?`)) return;
+    const newDeleted = new Set(deletedIds);
+    newDeleted.add(s.id);
+    setDeletedIds(newDeleted);
+    localStorage.setItem(EXP_DELETED_KEY, JSON.stringify([...newDeleted]));
+    schedulePush();
+    // If it was a new/PDF record, also remove from new records
+    try {
+      const existingNew = JSON.parse(localStorage.getItem(EXP_NEW_RECORDS_KEY) || '[]');
+      const filtered = existingNew.filter((r: ExpRecord) => r.id !== s.id);
+      localStorage.setItem(EXP_NEW_RECORDS_KEY, JSON.stringify(filtered));
+      schedulePush();
+      expCache.data = expCache.data.filter(d => d.id !== s.id);
+    } catch { /* ignore */ }
+    // Remove edits
+    const allEdits = { ...edits };
+    delete allEdits[s.id];
+    setEdits(allEdits);
+    saveEdits(allEdits);
+    setDetailOpen(false);
+    setSelected(null);
+  }, [deletedIds, edits]);
+
+  // Ingreso COTEs management
+  const currentIngresos = selected ? (ingresosCotes[selected.id] || []) : [];
+
+  const addIngreso = useCallback(() => {
+    if (!selected) return;
+    const updated = { ...ingresosCotes, [selected.id]: [...(ingresosCotes[selected.id] || []), { cote: '', cajas: '' as const }] };
+    setIngresosCotes(updated);
+    saveIngresos(updated);
+  }, [selected, ingresosCotes]);
+
+  const updateIngreso = useCallback((idx: number, field: 'cote' | 'cajas', value: string) => {
+    if (!selected) return;
+    const list = [...(ingresosCotes[selected.id] || [])];
+    if (field === 'cajas') {
+      list[idx] = { ...list[idx], cajas: value === '' ? '' : Number(value) };
+    } else {
+      list[idx] = { ...list[idx], cote: value };
+    }
+    const updated = { ...ingresosCotes, [selected.id]: list };
+    setIngresosCotes(updated);
+    saveIngresos(updated);
+  }, [selected, ingresosCotes]);
+
+  const removeIngreso = useCallback((idx: number) => {
+    if (!selected) return;
+    const list = [...(ingresosCotes[selected.id] || [])];
+    list.splice(idx, 1);
+    const updated = { ...ingresosCotes, [selected.id]: list };
+    setIngresosCotes(updated);
+    saveIngresos(updated);
+  }, [selected, ingresosCotes]);
+
+  const totalCajasIngreso = currentIngresos.reduce((sum, ic) => sum + (typeof ic.cajas === 'number' ? ic.cajas : 0), 0);
+
+  // PDF Upload handler
+  const handlePdfUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setPdfLoading(true);
+    setPdfError(null);
+    try {
+      const parsed = await parseCotePdf(file);
+      const newRecord = coteToExpRecord(parsed);
+
+      // Check if COTE already exists in cache
+      await ensureExp();
+      const existing = expCache.data.find(s => s.nroCote === newRecord.nroCote);
+      if (existing) {
+        // Open existing record in edit mode, also load ingreso COTEs from PDF
+        const withEdits = applyEdits(expCache.data, edits).find(s => s.nroCote === newRecord.nroCote);
+        if (withEdits) {
+          // If PDF has ingreso COTEs, add them
+          if (parsed.ingresoCotes.length > 0) {
+            const currentIng = ingresosCotes[withEdits.id] || [];
+            const existingCotesSet = new Set(currentIng.map(ic => ic.cote));
+            const newIngresos = parsed.ingresoCotes
+              .filter(c => !existingCotesSet.has(c))
+              .map(c => ({ cote: c, cajas: '' as const }));
+            if (newIngresos.length > 0) {
+              const updatedIng = { ...ingresosCotes, [withEdits.id]: [...currentIng, ...newIngresos] };
+              setIngresosCotes(updatedIng);
+              saveIngresos(updatedIng);
+            }
+          }
+          handleOpenDetail(withEdits);
+          setEditMode(true);
+          setPdfError(null);
+        }
+        setPdfLoading(false);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+        return;
+      }
+
+      // Add to new records (so it appears in Trazabilidad too)
+      try {
+        const existingNew = JSON.parse(localStorage.getItem(EXP_NEW_RECORDS_KEY) || '[]');
+        existingNew.push(newRecord);
+        localStorage.setItem(EXP_NEW_RECORDS_KEY, JSON.stringify(existingNew));
+        schedulePush();
+      } catch { /* ignore */ }
+
+      // Add to expCache and edits so it shows in Exportaciones
+      expCache.data = [...expCache.data, newRecord as ExpRecord];
+      const newEdits = { ...edits, [newRecord.id]: newRecord as Partial<ExpRecord> };
+      setEdits(newEdits);
+      saveEdits(newEdits);
+
+      // Save ingreso COTEs extracted from PDF
+      if (parsed.ingresoCotes.length > 0) {
+        const newIngresos = parsed.ingresoCotes.map(c => ({ cote: c, cajas: '' as const }));
+        const updatedIng = { ...ingresosCotes, [newRecord.id]: newIngresos };
+        setIngresosCotes(updatedIng);
+        saveIngresos(updatedIng);
+      }
+
+      // Update COTEs list
+      const allData = applyEdits(expCache.data, newEdits);
+      setCotes([...new Set(allData.map(s => s.nroCote).filter(Boolean) as string[])].sort());
+
+      // Open in edit mode
+      handleOpenDetail(newRecord as ExpRecord);
+      setEditMode(true);
+    } catch (err) {
+      console.error('Error parsing PDF:', err);
+      setPdfError('Error al procesar el PDF. Verificá que sea un COTE válido.');
+    }
+    setPdfLoading(false);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }, [edits, handleOpenDetail, ingresosCotes]);
+
   const editedCount = Object.keys(edits).length;
 
-  const totalPages = Math.ceil(total / limit);
+  const totalPages = Math.ceil(total / EXP_PAGE_LIMIT);
   const hasFilters = Object.values(expFilters).some(Boolean);
   const filteredCotes = coteSearch ? cotes.filter(c => c.toLowerCase().includes(coteSearch.toLowerCase())) : cotes;
   const a = expCache.analytics;
@@ -398,21 +552,25 @@ export default function ExportacionesTable() {
           )}
         </div>
         <div className="flex gap-2">
-          {editedCount > 0 && (
-            <Button variant="outline" size="sm" className="text-amber-700 border-amber-300 hover:bg-amber-50" onClick={() => {
-              if (confirm('¿Eliminar todas las ediciones? Se restaurarán los valores originales.')) {
-                setEdits({});
-                saveEdits({});
-                expCache.data = applyEdits(expCache.data, {});
-                setCotes([...new Set(expCache.data.map(s => s.nroCote).filter(Boolean) as string[])].sort());
-              }
-            }}>
-              <RotateCcw className="h-4 w-4 mr-1" />Limpiar ediciones
-            </Button>
-          )}
-          <Button variant={!showAll ? 'default' : 'outline'} size="sm" onClick={() => { setShowAll(!showAll); setPage(1); }}>
-            {showAll ? 'Paginar (20)' : 'Ver todos'}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".pdf"
+            className="hidden"
+            onChange={handlePdfUpload}
+          />
+          <Button
+            variant="default"
+            size="sm"
+            className="bg-emerald-600 hover:bg-emerald-700 gap-1.5"
+            disabled={pdfLoading}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            {pdfLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+            {pdfLoading ? 'Procesando...' : 'Nueva'}
           </Button>
+          {pdfError && <span className="text-xs text-red-500 self-center">{pdfError}</span>}
+          
           <Button variant="outline" size="sm" onClick={() => setShowCharts(!showCharts)}>
             {showCharts ? 'Ocultar' : 'Ver'} Resumen
           </Button>
@@ -528,15 +686,13 @@ export default function ExportacionesTable() {
             </tbody>
           </table>
         </div>
-        {!showAll && (
-          <div className="flex items-center justify-between p-4 border-t">
+        <div className="flex items-center justify-between p-4 border-t">
             <p className="text-sm text-slate-500">{total} registros — Página {page} de {totalPages || 1}</p>
             <div className="flex gap-2">
               <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(p => p - 1)}><ChevronLeft className="h-4 w-4" /></Button>
               <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}><ChevronRight className="h-4 w-4" /></Button>
             </div>
           </div>
-        )}
       </CardContent></Card>
 
       {/* ===== SHEET: DETALLE / EDICION ===== */}
@@ -569,6 +725,9 @@ export default function ExportacionesTable() {
                     }}
                   >
                     {editMode ? <><Save className="h-3.5 w-3.5 mr-1" />Guardar</> : <><Pencil className="h-3.5 w-3.5 mr-1" />Editar</>}
+                  </Button>
+                  <Button variant="ghost" size="sm" className="h-7 text-xs text-red-600 hover:text-red-700 hover:bg-red-50" onClick={() => handleDelete(selected)}>
+                    <Trash2 className="h-3.5 w-3.5 mr-1" />Eliminar
                   </Button>
                 </div>
               </div>
@@ -604,7 +763,7 @@ export default function ExportacionesTable() {
                                 <Select value={editForm[field.key] || ''} onValueChange={v => setEditForm(prev => ({ ...prev, [field.key]: v }))}>
                                   <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Seleccionar..." /></SelectTrigger>
                                   <SelectContent>
-                                    {(field.options || []).map(o => <SelectItem key={o || '_empty'} value={o || ''}>{o || '(vacío)'}</SelectItem>)}
+                                    {(field.options || []).map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}
                                   </SelectContent>
                                 </Select>
                               ) : field.type === 'textarea' ? (
@@ -651,6 +810,90 @@ export default function ExportacionesTable() {
                   </div>
                 </div>
               ))}
+
+              {/* ===== COTEs DE INGRESO ===== */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs font-bold text-emerald-700 uppercase tracking-wide flex items-center gap-1.5">
+                    <Package className="h-3.5 w-3.5" />COTEs de Ingreso
+                  </p>
+                  <div className="flex items-center gap-2">
+                    {currentIngresos.length > 0 && (
+                      <span className="text-xs text-slate-500">{currentIngresos.length} COTE{currentIngresos.length !== 1 ? 's' : ''} — {totalCajasIngreso.toLocaleString('es-UY')} cajas total</span>
+                    )}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-6 text-xs gap-1 text-emerald-700 border-emerald-300 hover:bg-emerald-50"
+                      onClick={addIngreso}
+                    >
+                      <Plus className="h-3 w-3" />Agregar
+                    </Button>
+                  </div>
+                </div>
+
+                {currentIngresos.length === 0 ? (
+                  <div className="border border-dashed border-slate-300 rounded-lg p-4 text-center">
+                    <Package className="h-6 w-6 text-slate-300 mx-auto mb-1" />
+                    <p className="text-xs text-slate-400">Sin COTEs de ingreso vinculados</p>
+                    <p className="text-[10px] text-slate-300 mt-0.5">Hacé clic en "Agregar" para vincular COTEs de ingreso con cantidad de cajas</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {currentIngresos.map((ic, idx) => (
+                      <div key={idx} className="flex items-center gap-2 p-2 bg-emerald-50/60 border border-emerald-200/60 rounded-lg">
+                        <span className="text-[10px] text-slate-400 w-4 shrink-0 text-center font-mono">{idx + 1}</span>
+                        <div className="flex-1 min-w-0">
+                          <label className="text-[10px] text-slate-400 block mb-0.5">Nro. COTE Ingreso</label>
+                          {editMode ? (
+                            <Input
+                              value={ic.cote}
+                              onChange={e => updateIngreso(idx, 'cote', e.target.value)}
+                              placeholder="Ej: 2400001234"
+                              className="h-7 text-xs"
+                            />
+                          ) : (
+                            <span className="text-xs font-medium text-slate-800">{ic.cote || '-'}</span>
+                          )}
+                        </div>
+                        <div className="w-24 shrink-0">
+                          <label className="text-[10px] text-slate-400 block mb-0.5">Cajas</label>
+                          {editMode ? (
+                            <Input
+                              type="number"
+                              min="0"
+                              value={ic.cajas === '' ? '' : ic.cajas}
+                              onChange={e => updateIngreso(idx, 'cajas', e.target.value)}
+                              placeholder="0"
+                              className="h-7 text-xs text-right"
+                            />
+                          ) : (
+                            <span className="text-xs font-mono font-medium text-slate-800">{typeof ic.cajas === 'number' ? ic.cajas.toLocaleString('es-UY') : '-'}</span>
+                          )}
+                        </div>
+                        {editMode && (
+                          <button
+                            type="button"
+                            className="mt-4 shrink-0 p-1 rounded hover:bg-red-100 text-slate-400 hover:text-red-600 transition-colors"
+                            onClick={() => removeIngreso(idx)}
+                            title="Eliminar COTE de ingreso"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                    {currentIngresos.length > 1 && (
+                      <div className="flex justify-end pt-1 pr-1">
+                        <span className="text-xs font-medium text-emerald-700">
+                          Total cajas: {totalCajasIngreso.toLocaleString('es-UY')}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           </>)}
         </SheetContent>

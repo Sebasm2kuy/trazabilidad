@@ -51,13 +51,24 @@ const STAGE_LABELS: Record<string, string> = {
 type SearchMode = 'trámite' | 'cote' | 'producto' | 'destino' | 'matricula' | 'precinto';
 
 // --- CACHE para exportaciones ---
-const expCache: { data: Shipment[]; loaded: boolean } = { data: [], loaded: false };
-async function ensureExp() {
-  if (!expCache.loaded) {
+const expRawCache: { data: Shipment[]; loaded: boolean } = { data: [], loaded: false };
+
+function loadExpEdits(): Record<string, Partial<Shipment>> {
+  try { const r = localStorage.getItem('trazabilidad_exp_edits'); return r ? JSON.parse(r) : {}; } catch { return {}; }
+}
+
+function applyExpEdits(data: Shipment[], edits: Record<string, Partial<Shipment>>): Shipment[] {
+  if (Object.keys(edits).length === 0) return data;
+  return data.map(s => edits[s.id] ? { ...s, ...edits[s.id] } : s);
+}
+
+async function ensureExp(): Promise<Shipment[]> {
+  if (!expRawCache.loaded) {
     const r = await fetch('data/exportaciones.json');
-    expCache.data = await r.json();
-    expCache.loaded = true;
+    expRawCache.data = await r.json();
+    expRawCache.loaded = true;
   }
+  return applyExpEdits(expRawCache.data, loadExpEdits());
 }
 
 // --- CACHE para envases (New Record) ---
@@ -142,8 +153,8 @@ export default function TraceSearch() {
         allResults.push(...j.data);
       }
       if (dataSource === 'exportaciones' || dataSource === 'todos') {
-        await ensureExp();
-        const expFiltered = filterByMode(expCache.data, q, mode);
+        const expData = await ensureExp();
+        const expFiltered = filterByMode(expData, q, mode);
         allResults.push(...expFiltered);
       }
       if (dataSource === 'todos') {
@@ -183,7 +194,7 @@ export default function TraceSearch() {
     try {
       const [ingRes, expRes] = await Promise.all([
         fetchShipments({ page: 1, limit: 99999, cote: nroCote }),
-        (async () => { await ensureExp(); return expCache.data.filter(s => s.nroCote?.toUpperCase() === nroCote.toUpperCase()); })(),
+        (async () => { const d = await ensureExp(); return d.filter(s => s.nroCote?.toUpperCase() === nroCote.toUpperCase()); })(),
       ]);
       setCruceData({
         ingreso: ingRes.data[0] || null,
