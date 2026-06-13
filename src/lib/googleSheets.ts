@@ -237,9 +237,6 @@ export function schedulePush() {
   }, SYNC_DEBOUNCE_MS);
 }
 
-/**
- * Pull data on app load. Call this once when the app mounts.
- */
 // --- Password management (synced via Sheets) ---
 
 const PASSWORD_KEY = 'trazabilidad_system_password';

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAppStore } from '@/store/useAppStore';
 import { LayoutDashboard, Warehouse, Ship, ArrowLeftRight, Search, GitCompare, BarChart3, Download, PlusCircle, Settings, Cloud, CloudOff } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -22,9 +22,19 @@ const tabs = [
 export default function Sidebar() {
   const { activeTab, setActiveTab } = useAppStore();
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [configured, setConfigured] = useState(false);
+  const [lastSync, setLastSync] = useState('');
 
-  const configured = typeof window !== 'undefined' ? isConfigured() : false;
-  const lastSync = typeof window !== 'undefined' ? getLastSync() : '';
+  useEffect(() => {
+    setConfigured(isConfigured());
+    setLastSync(getLastSync());
+    const handler = () => {
+      setConfigured(isConfigured());
+      setLastSync(getLastSync());
+    };
+    window.addEventListener('sheets-sync', handler);
+    return () => window.removeEventListener('sheets-sync', handler);
+  }, []);
 
   return (
     <>
