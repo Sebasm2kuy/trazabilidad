@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<title>Restableciendo...</title>
+<style>
+body{font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#f8fafc;color:#334155}
+.box{text-align:center;padding:40px;max-width:400px}
+.spinner{width:40px;height:40px;border:4px solid #e2e8f0;border-top-color:#10b981;border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 20px}
+@keyframes spin{to{transform:rotate(360deg)}}
+h2{margin:0 0 8px;font-size:18px}
+p{margin:0;font-size:13px;color:#64748b}
+.ok{color:#10b981;font-weight:700}
+</style>
+</head>
+<body>
+<div class="box">
+<div class="spinner"></div>
+<h2 id="t">Borrando todos los datos...</h2>
+<p id="s">Borrando localStorage y Google Sheet...</p>
+</div>
+<script>
+(function(){
+var keys=[
+  'trazabilidad_new_records','trazabilidad_exp_edits','trazabilidad_exp_deleted',
+  'trazabilidad_exp_ingresos','trazabilidad_dep_edits','trazabilidad_dep_new_records',
+  'trazabilidad_dep_deleted','cruce_caliral_edits','trazabilidad_stock_data',
+  'trazabilidad_imported_batches','trazabilidad_recent_searches'
+];
+
+// 1. Clear localStorage
+keys.forEach(function(k){localStorage.removeItem(k)});
+
+// 2. Delete from Google Sheet if configured
+var sheetUrl=localStorage.getItem('trazabilidad_sheets_url')||'';
+var t=document.getElementById('t');
+var s=document.getElementById('s');
+
+if(sheetUrl){
+  var done=0;
+  var total=keys.length;
+  keys.forEach(function(k){
+    fetch(sheetUrl,{
+      method:'POST',
+      headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body:JSON.stringify({action:'delete',key:k})
+    }).then(function(r){return r.text()}).then(function(){
+      done++;
+      s.textContent='Sheet: '+done+'/'+total+' claves borradas...';
+      if(done>=total)finish();
+    }).catch(function(){
+      done++;
+      s.textContent='Sheet: '+done+'/'+total+' (algunos con error)...';
+      if(done>=total)finish();
+    });
+  });
+}else{
+  s.textContent='No hay Sheet configurada. Solo se borró el localStorage.';
+  finish();
+}
+
+function finish(){
+  localStorage.setItem('trazabilidad_sheets_last_sync',new Date().toISOString());
+  t.textContent='Listo';
+  t.className='ok';
+  s.textContent='Redirigiendo a la app limpia...';
+  setTimeout(function(){
+    window.location.href='/trazabilidad/';
+  },1500);
+}
+})();
+</script>
+</body>
+</html>
