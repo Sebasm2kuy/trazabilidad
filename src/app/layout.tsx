@@ -40,7 +40,8 @@ export default function RootLayout({
                     'trazabilidad_new_records','trazabilidad_exp_edits','trazabilidad_exp_deleted',
                     'trazabilidad_exp_ingresos','trazabilidad_dep_edits','trazabilidad_dep_new_records',
                     'trazabilidad_dep_deleted','cruce_caliral_edits','trazabilidad_stock_data',
-                    'trazabilidad_imported_batches','trazabilidad_recent_searches'
+                    'trazabilidad_imported_batches','trazabilidad_recent_searches',
+                    'trazabilidad_dep_imported','trazabilidad_exp_imported'
                   ];
                   keys.forEach(function(k){ localStorage.removeItem(k); });
 

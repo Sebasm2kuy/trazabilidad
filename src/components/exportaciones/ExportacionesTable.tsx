@@ -13,7 +13,9 @@ import { Search, X, ChevronLeft, ChevronRight, Eye, FileCheck, Download, Ship, P
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import type { Shipment, ExpRecord } from '@/lib/types';
 import { parseCotePdf, coteToExpRecord } from '@/lib/parseCotePdf';
+import { parseExpoExcel } from '@/lib/parseExcelRegistro';
 import { schedulePush } from '@/lib/googleSheets';
+import { toast } from 'sonner';
 
 function fd(d: string | null | undefined) { if (!d) return '-'; try { return new Date(d).toLocaleDateString('es-UY', { day: '2-digit', month: '2-digit', year: 'numeric' }); } catch { return '-'; } }
 function fdt(d: string | null | undefined) { if (!d) return '-'; try { return new Date(d).toLocaleDateString('es-UY', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }); } catch { return '-'; } }
@@ -43,16 +45,24 @@ function saveIngresos(data: Record<string, IngresoCote[]>) {
   schedulePush();
 }
 
+const EXP_IMPORTED_KEY = 'trazabilidad_exp_imported';
+
 const expCache: { data: ExpRecord[]; loaded: boolean; analytics: Record<string, unknown> | null } = { data: [], loaded: false, analytics: null };
 
 async function ensureExp() {
   if (!expCache.loaded) {
-    const [expR, anaR] = await Promise.all([
-      fetch('data/exportaciones.json'),
-      fetch('data/exportaciones-analytics.json'),
-    ]);
-    expCache.data = await expR.json();
-    expCache.analytics = await anaR.json();
+    const imported = localStorage.getItem(EXP_IMPORTED_KEY);
+    if (imported) {
+      try { expCache.data = JSON.parse(imported); } catch { expCache.data = []; }
+      expCache.analytics = { total: 0, pesoNetoTotal: 0, pesoBrutoTotal: 0, envasesTotal: 0, uniquePaisCount: 0, uniqueProductoCount: 0, uniqueDestinoCount: 0, lastDate: null, byPais: [], byProducto: [], byDestino: [] };
+    } else {
+      const [expR, anaR] = await Promise.all([
+        fetch('data/exportaciones.json'),
+        fetch('data/exportaciones-analytics.json'),
+      ]);
+      expCache.data = await expR.json();
+      expCache.analytics = await anaR.json();
+    }
     expCache.loaded = true;
   }
 }
@@ -211,6 +221,8 @@ export default function ExportacionesTable() {
   const [pdfLoading, setPdfLoading] = useState(false);
   const [pdfError, setPdfError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [importing, setImporting] = useState(false);
+  const excelInputRef = useRef<HTMLInputElement>(null);
 
   // Delete record state (declared early so useEffects can reference it)
   const [deletedIds, setDeletedIds] = useState<Set<string>>(() => {
@@ -455,6 +467,32 @@ export default function ExportacionesTable() {
 
   const totalCajasIngreso = currentIngresos.reduce((sum, ic) => sum + (typeof ic.cajas === 'number' ? ic.cajas : 0), 0);
 
+  // Excel Import handler
+  const handleExcelImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImporting(true);
+    try {
+      const records = await parseExpoExcel(file);
+      expCache.data = records;
+      expCache.loaded = true;
+      expCache.analytics = { total: records.length, pesoNetoTotal: records.reduce((s, r) => s + (r.pesoNeto || 0), 0), pesoBrutoTotal: records.reduce((s, r) => s + (r.pesoBruto || 0), 0), envasesTotal: records.reduce((s, r) => s + (r.cantidadEnvases || 0), 0), uniquePaisCount: new Set(records.map(r => r.paisDestino).filter(Boolean)).size, uniqueProductoCount: new Set(records.map(r => r.denominacionMercaderia).filter(Boolean)).size, uniqueDestinoCount: 0, lastDate: records.length > 0 ? records[0].fechaTramite : null, byPais: [], byProducto: [], byDestino: [] };
+      localStorage.setItem(EXP_IMPORTED_KEY, JSON.stringify(records));
+      schedulePush();
+      // Update COTEs
+      setCotes([...new Set(records.map(s => s.nroCote).filter(Boolean) as string[])].sort());
+      toast.success(`${records.length} registros importados de Exportaciones`);
+      setPage(1);
+      setLoading(true);
+      setTimeout(() => setLoading(false), 100);
+    } catch (err) {
+      toast.error('Error al importar: ' + (err as Error).message);
+    } finally {
+      setImporting(false);
+      if (excelInputRef.current) excelInputRef.current.value = '';
+    }
+  };
+
   // PDF Upload handler
   const handlePdfUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -552,6 +590,11 @@ export default function ExportacionesTable() {
           )}
         </div>
         <div className="flex gap-2">
+          <input ref={excelInputRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleExcelImport} />
+          <Button variant="outline" size="sm" onClick={() => excelInputRef.current?.click()} disabled={importing}>
+            {importing ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Upload className="h-4 w-4 mr-2" />}
+            {importing ? 'Importando...' : 'Importar Excel'}
+          </Button>
           <input
             ref={fileInputRef}
             type="file"

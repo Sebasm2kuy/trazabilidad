@@ -28,6 +28,8 @@ const ALL_DATA_KEYS = [
   'trazabilidad_stock_data',
   'trazabilidad_imported_batches',
   'trazabilidad_recent_searches',
+  'trazabilidad_dep_imported',
+  'trazabilidad_exp_imported',
 ];
 
 export default function SettingsSheet({ open, onOpenChange }: SettingsSheetProps) {

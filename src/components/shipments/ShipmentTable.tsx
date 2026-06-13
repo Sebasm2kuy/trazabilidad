@@ -8,10 +8,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
-import { Search, X, ChevronLeft, ChevronRight, Eye, FileCheck, Pencil, Save, RotateCcw, CheckCircle2, Plus, Trash2, Download } from 'lucide-react';
+import { Search, X, ChevronLeft, ChevronRight, Eye, FileCheck, Pencil, Save, RotateCcw, CheckCircle2, Plus, Trash2, Download, Upload, Loader2 } from 'lucide-react';
 import { fetchShipments, fetchAnalytics, getCotes } from '@/lib/staticData';
+import { parseEnviosExcel } from '@/lib/parseExcelRegistro';
 import type { Shipment } from '@/lib/types';
 import { schedulePush } from '@/lib/googleSheets';
+import { toast } from 'sonner';
 
 function fd(d: string | null | undefined) { if (!d) return '-'; try { return new Date(d).toLocaleDateString('es-UY', { day: '2-digit', month: '2-digit', year: 'numeric' }); } catch { return '-'; } }
 function fdt(d: string | null | undefined) { if (!d) return '-'; try { return new Date(d).toLocaleDateString('es-UY', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }); } catch { return '-'; } }
@@ -139,10 +141,17 @@ function toInputDate(d: string | null | undefined): string {
 // Cache for raw data from shipments.json
 const depCache: { data: Shipment[]; loaded: boolean } = { data: [], loaded: false };
 
+const DEP_IMPORTED_KEY = 'trazabilidad_dep_imported';
+
 async function ensureDep() {
   if (!depCache.loaded) {
-    const r = await fetch('data/shipments.json');
-    depCache.data = await r.json();
+    const imported = localStorage.getItem(DEP_IMPORTED_KEY);
+    if (imported) {
+      try { depCache.data = JSON.parse(imported); } catch { depCache.data = []; }
+    } else {
+      const r = await fetch('data/shipments.json');
+      depCache.data = await r.json();
+    }
     depCache.loaded = true;
   }
 }
@@ -168,6 +177,8 @@ export default function ShipmentTable() {
   const [coteOpen, setCoteOpen] = useState(false);
   const [coteSearch, setCoteSearch] = useState('');
   const coteInputRef = useRef<HTMLInputElement>(null);
+  const [importing, setImporting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const limit = 20;
 
   useEffect(() => {
@@ -404,6 +415,29 @@ export default function ShipmentTable() {
     XLSX.writeFile(wb, `depositos_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
+  const handleImportExcel = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImporting(true);
+    try {
+      const records = await parseEnviosExcel(file);
+      depCache.data = records;
+      depCache.loaded = true;
+      localStorage.setItem(DEP_IMPORTED_KEY, JSON.stringify(records));
+      schedulePush();
+      toast.success(`${records.length} registros importados de Depósitos`);
+      setPage(1);
+      // Re-trigger data loading
+      setLoading(true);
+      setTimeout(() => setLoading(false), 100);
+    } catch (err) {
+      toast.error('Error al importar: ' + (err as Error).message);
+    } finally {
+      setImporting(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
   if (loading) return <div className="p-6 space-y-4"><h2 className="text-2xl font-bold text-slate-800">A Depósitos</h2><Skeleton className="h-96" /></div>;
 
   return (
@@ -418,6 +452,11 @@ export default function ShipmentTable() {
           )}
         </div>
         <div className="flex gap-2">
+          <input ref={fileInputRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleImportExcel} />
+          <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} disabled={importing}>
+            {importing ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Upload className="h-4 w-4 mr-2" />}
+            {importing ? 'Importando...' : 'Importar Excel'}
+          </Button>
           <Button variant="default" size="sm" className="bg-emerald-600 hover:bg-emerald-700 gap-1.5" onClick={handleCreate}>
             <Plus className="h-4 w-4" />Nuevo
           </Button>

@@ -21,6 +21,8 @@ export const SYNC_KEYS = [
   'cruce_caliral_edits',
   'trazabilidad_stock_data',
   'trazabilidad_system_password',
+  'trazabilidad_dep_imported',
+  'trazabilidad_exp_imported',
 ];
 
 let pushTimer: ReturnType<typeof setTimeout> | null = null;
