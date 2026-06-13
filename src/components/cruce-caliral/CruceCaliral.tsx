@@ -531,17 +531,33 @@ function StockTable({ stockAggMap, ingresoMap, cruceRows, sinCruceRows, edits }:
   const [stockSearch, setStockSearch] = useState('');
   const [stockFilter, setStockFilter] = useState<'all' | 'con_ingreso' | 'sin_ingreso' | 'con_diff'>('all');
 
-  // Build export cajas map: codigo -> total cajas used in exports (from manual links)
+  // Build export cajas map: ingreso COTE -> total cajas exported
+  // Manual links: use specified cajas per COTE
+  // Automatic links: distribute export cajas proportionally by ingreso cajas
   const exportCajasMap = useMemo(() => {
     const map = new Map<string, number>();
-    // From cruceRows with manual links
+    // From cruceRows (exports matched to ingreso COTEs)
     for (const r of cruceRows) {
       if (r.isManualLink && edits.exports[r.exp.id]?.manualCotes) {
+        // Manual: use exact cajas per COTE
         for (const mc of edits.exports[r.exp.id].manualCotes!) {
           map.set(mc.cote, (map.get(mc.cote) || 0) + mc.cajas);
         }
+      } else if (r.ingresoCotes.length > 0) {
+        // Automatic: distribute export cajas proportionally by ingreso envases
+        const totalIngCajas = r.ingresoCotes.reduce((s, c) => s + (ingresoMap.get(c)?.envases || 0), 0);
+        for (const c of r.ingresoCotes) {
+          let share: number;
+          if (totalIngCajas > 0) {
+            const ingCajas = ingresoMap.get(c)?.envases || 0;
+            share = Math.round(r.envasesExp * ingCajas / totalIngCajas);
+          } else {
+            // No ingreso cajas info — split evenly
+            share = Math.floor(r.envasesExp / r.ingresoCotes.length);
+          }
+          map.set(c, (map.get(c) || 0) + share);
+        }
       }
-      // Also add automatic cotes from ingresoCotes (but we can't know per-COTE split)
     }
     // From sinCruceRows with manual cotes
     for (const r of sinCruceRows) {
@@ -553,7 +569,7 @@ function StockTable({ stockAggMap, ingresoMap, cruceRows, sinCruceRows, edits }:
       }
     }
     return map;
-  }, [cruceRows, sinCruceRows, edits]);
+  }, [cruceRows, sinCruceRows, edits, ingresoMap]);
 
   // Build list from stockAggMap
   const stockList = useMemo(() => {
@@ -576,17 +592,22 @@ function StockTable({ stockAggMap, ingresoMap, cruceRows, sinCruceRows, edits }:
       items = items.filter(a => {
         const ing = ingresoMap.get(a.codigo);
         if (!ing) return false;
-        return Math.abs(a.totalCajas - ing.envases) > 0;
+        const expCajas = exportCajasMap.get(a.codigo) || 0;
+        const saldo = ing.envases - expCajas;
+        return Math.abs(a.totalCajas - saldo) > 0;
       });
     }
 
     items.sort((a, b) => b.totalKilos - a.totalKilos);
     return items;
-  }, [stockAggMap, ingresoMap, stockSearch, stockFilter]);
+  }, [stockAggMap, ingresoMap, stockSearch, stockFilter, exportCajasMap]);
 
   const totalConIngreso = [...stockAggMap.values()].filter(a => ingresoMap.has(a.codigo)).length;
   const totalSinIngreso = stockAggMap.size - totalConIngreso;
   const totalCajasStock = [...stockAggMap.values()].reduce((s, a) => s + a.totalCajas, 0);
+  const totalCajasIngreso = [...stockAggMap.values()].reduce((s, a) => { const ing = ingresoMap.get(a.codigo); return s + (ing?.envases || 0); }, 0);
+  const totalCajasExport = [...stockAggMap.values()].reduce((s, a) => s + (exportCajasMap.get(a.codigo) || 0), 0);
+  const totalSaldoTeorico = totalCajasIngreso - totalCajasExport;
 
   return (
     <div>
@@ -608,8 +629,16 @@ function StockTable({ stockAggMap, ingresoMap, cruceRows, sinCruceRows, edits }:
             <SelectItem value="con_diff">Con diferencia</SelectItem>
           </SelectContent>
         </Select>
-        <div className="text-xs text-slate-500">
-          {stockList.length} codigos — {totalCajasStock.toLocaleString('es-UY')} cajas totales
+        <div className="text-xs text-slate-500 space-x-2">
+          <span>{stockList.length} codigos</span>
+          <span className="text-slate-300">|</span>
+          <span>Stock: <b className="text-teal-700">{totalCajasStock.toLocaleString('es-UY')}</b></span>
+          <span className="text-slate-300">|</span>
+          <span>Ingreso: <b className="text-emerald-700">{totalCajasIngreso.toLocaleString('es-UY')}</b></span>
+          <span className="text-slate-300">|</span>
+          <span>Export: <b className="text-blue-700">{totalCajasExport.toLocaleString('es-UY')}</b></span>
+          <span className="text-slate-300">|</span>
+          <span>Saldo teorico: <b className={totalSaldoTeorico < 0 ? 'text-red-600' : 'text-violet-700'}>{totalSaldoTeorico.toLocaleString('es-UY')}</b></span>
         </div>
       </div>
 
@@ -624,11 +653,10 @@ function StockTable({ stockAggMap, ingresoMap, cruceRows, sinCruceRows, edits }:
               <th className="px-3 py-2.5 hidden xl:table-cell">Contenedores</th>
               <th className="px-3 py-2.5 text-right">Pallets</th>
               <th className="px-3 py-2.5 text-right">Cajas Stock</th>
-              <th className="px-3 py-2.5 text-right">Kg Stock</th>
               <th className="px-3 py-2.5 text-right">Cajas Ingreso</th>
-              <th className="px-3 py-2.5 text-right hidden md:table-cell">Cajas Export.</th>
-              <th className="px-3 py-2.5 text-right">Diff Stock/Ingreso</th>
-              <th className="px-3 py-2.5 text-right hidden lg:table-cell">Diff Stock/Export</th>
+              <th className="px-3 py-2.5 text-right">Cajas Export.</th>
+              <th className="px-3 py-2.5 text-right">Saldo Teorico</th>
+              <th className="px-3 py-2.5 text-right">Diff Stock/Saldo</th>
               <th className="px-3 py-2.5 w-8"></th>
             </tr>
           </thead>
@@ -638,8 +666,8 @@ function StockTable({ stockAggMap, ingresoMap, cruceRows, sinCruceRows, edits }:
             ) : stockList.map(agg => {
               const ing = ingresoMap.get(agg.codigo);
               const expCajas = exportCajasMap.get(agg.codigo) || 0;
-              const diffIngreso = ing ? agg.totalCajas - ing.envases : null;
-              const diffExport = expCajas > 0 ? agg.totalCajas - expCajas : null;
+              const saldoTeorico = ing ? ing.envases - expCajas : null;
+              const diffStockSaldo = saldoTeorico !== null ? agg.totalCajas - saldoTeorico : null;
 
               return (
                 <React.Fragment key={agg.codigo}>
@@ -653,8 +681,7 @@ function StockTable({ stockAggMap, ingresoMap, cruceRows, sinCruceRows, edits }:
                     <td className="px-3 py-2.5 text-xs hidden lg:table-cell max-w-[200px] truncate" title={agg.producto}>{agg.producto}</td>
                     <td className="px-3 py-2.5 text-xs hidden xl:table-cell max-w-[150px] truncate">{agg.contenedores.join(', ') || '-'}</td>
                     <td className="px-3 py-2.5 text-xs text-right font-mono">{agg.totalPallets}</td>
-                    <td className="px-3 py-2.5 text-xs text-right font-mono font-medium">{agg.totalCajas.toLocaleString('es-UY')}</td>
-                    <td className="px-3 py-2.5 text-xs text-right font-mono hidden">{agg.totalKilos.toLocaleString('es-UY')}</td>
+                    <td className="px-3 py-2.5 text-xs text-right font-mono font-medium text-teal-700">{agg.totalCajas.toLocaleString('es-UY')}</td>
                     <td className="px-3 py-2.5 text-xs text-right font-mono">
                       {ing ? (
                         <span className="text-emerald-700">{ing.envases.toLocaleString('es-UY')}</span>
@@ -662,32 +689,29 @@ function StockTable({ stockAggMap, ingresoMap, cruceRows, sinCruceRows, edits }:
                         <span className="text-slate-300">—</span>
                       )}
                     </td>
-                    <td className="px-3 py-2.5 text-xs text-right font-mono hidden md:table-cell">
+                    <td className="px-3 py-2.5 text-xs text-right font-mono">
                       {expCajas > 0 ? (
                         <span className="text-blue-700">{expCajas.toLocaleString('es-UY')}</span>
                       ) : (
                         <span className="text-slate-300">—</span>
                       )}
                     </td>
-                    <td className="px-3 py-2.5 text-right">
-                      {diffIngreso !== null ? (
-                        <span className={`inline-flex items-center text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
-                          diffIngreso === 0 ? 'bg-emerald-50 text-emerald-700' :
-                          diffIngreso < 0 ? 'bg-red-50 text-red-700' : 'bg-sky-50 text-sky-700'
-                        }`}>
-                          {diffIngreso === 0 ? '0' : (diffIngreso > 0 ? '+' : '') + diffIngreso}
+                    <td className="px-3 py-2.5 text-xs text-right font-mono">
+                      {saldoTeorico !== null ? (
+                        <span className={saldoTeorico < 0 ? 'text-red-600 font-medium' : 'text-violet-700 font-medium'}>
+                          {saldoTeorico.toLocaleString('es-UY')}
                         </span>
                       ) : (
-                        <span className="text-[10px] text-slate-300">—</span>
+                        <span className="text-slate-300">—</span>
                       )}
                     </td>
-                    <td className="px-3 py-2.5 text-right hidden lg:table-cell">
-                      {diffExport !== null ? (
+                    <td className="px-3 py-2.5 text-right">
+                      {diffStockSaldo !== null ? (
                         <span className={`inline-flex items-center text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
-                          diffExport === 0 ? 'bg-emerald-50 text-emerald-700' :
-                          diffExport < 0 ? 'bg-red-50 text-red-700' : 'bg-sky-50 text-sky-700'
+                          Math.abs(diffStockSaldo) === 0 ? 'bg-emerald-50 text-emerald-700' :
+                          diffStockSaldo < 0 ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-700'
                         }`}>
-                          {diffExport === 0 ? '0' : (diffExport > 0 ? '+' : '') + diffExport}
+                          {Math.abs(diffStockSaldo) === 0 ? '0' : (diffStockSaldo > 0 ? '+' : '') + diffStockSaldo}
                         </span>
                       ) : (
                         <span className="text-[10px] text-slate-300">—</span>
@@ -704,8 +728,22 @@ function StockTable({ stockAggMap, ingresoMap, cruceRows, sinCruceRows, edits }:
                   </tr>
                   {expandedCode === agg.codigo && (
                     <tr className="border-b bg-teal-50/30">
-                      <td colSpan={12} className="px-4 py-3">
-                        <div className="space-y-3\">
+                      <td colSpan={11} className="px-4 py-3">
+                        <div className="space-y-3">
+                          {/* Resumen saldo */}
+                          {ing && (
+                            <div className="bg-violet-50 rounded-lg p-3">
+                              <p className="text-[10px] text-violet-600 uppercase font-bold mb-2">Resumen de saldo</p>
+                              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs">
+                                <div><span className="text-slate-500">Cajas Stock:</span> <span className="font-mono font-medium text-teal-700">{agg.totalCajas.toLocaleString('es-UY')}</span></div>
+                                <div><span className="text-slate-500">Cajas Ingreso:</span> <span className="font-mono font-medium text-emerald-700">{ing.envases.toLocaleString('es-UY')}</span></div>
+                                <div><span className="text-slate-500">Cajas Export.:</span> <span className="font-mono font-medium text-blue-700">{expCajas.toLocaleString('es-UY')}</span></div>
+                                <div><span className="text-slate-500">Saldo Teorico:</span> <span className={`font-mono font-bold ${saldoTeorico! < 0 ? 'text-red-600' : 'text-violet-700'}`}>{(ing.envases - expCajas).toLocaleString('es-UY')}</span></div>
+                                <div><span className="text-slate-500">Diff:</span> <span className={`font-mono font-bold ${Math.abs(diffStockSaldo!) === 0 ? 'text-emerald-600' : diffStockSaldo! < 0 ? 'text-red-600' : 'text-amber-600'}`}>{diffStockSaldo === 0 ? '0' : (diffStockSaldo! > 0 ? '+' : '') + diffStockSaldo}</span></div>
+                              </div>
+                            </div>
+                          )}
+
                           {/* Ingreso info if found */}
                           {ing && (
                             <div className="bg-emerald-50 rounded-lg p-3">
