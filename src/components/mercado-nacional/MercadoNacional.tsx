@@ -390,11 +390,43 @@ export default function MercadoNacional() {
         const ra = await fetch(dataUrl('data/nacional_analytics.json'));
         if (ra.ok && !cancelled) setAnalytics(await ra.json());
 
+        // 1. Primero intentar cargar desde Firebase (datos actualizados por el usuario)
+        const fbUrl = 'https://trazabilidad-9aa3c-default-rtdb.firebaseio.com';
+        setLoadProgress('Verificando datos actualizados…');
+        try {
+          const metaResp = await fetch(`${fbUrl}/mercado_nacional_meta.json`);
+          if (metaResp.ok) {
+            const meta = await metaResp.json();
+            if (meta && meta.totalRegistros && meta.totalChunks) {
+              setLoadProgress(`Cargando ${meta.totalRegistros.toLocaleString()} registros actualizados (${meta.fileName || 'Excel'})…`);
+              // Cargar todos los chunks
+              const allRecords: MovRecord[] = [];
+              for (let i = 0; i < meta.totalChunks; i++) {
+                const chunkResp = await fetch(`${fbUrl}/mercado_nacional_data/${i}.json`);
+                if (chunkResp.ok) {
+                  const chunk = await chunkResp.json();
+                  if (Array.isArray(chunk)) {
+                    allRecords.push(...chunk);
+                  }
+                }
+              }
+              if (allRecords.length > 0 && !cancelled) {
+                setRecords(allRecords);
+                setLoadProgress('');
+                setLoadingRecords(false);
+                toast.info(`Datos cargados desde la nube: ${allRecords.length.toLocaleString()} registros (actualizado ${meta.fecha ? new Date(meta.fecha).toLocaleDateString('es-UY') : 'recientemente'}).`);
+                return; // No cargar el .json.gz
+              }
+            }
+          }
+        } catch (fbErr) {
+          console.warn('Firebase load failed, falling back to .json.gz:', fbErr);
+        }
+
+        // 2. Si no hay datos en Firebase, cargar el .json.gz pre-cargado
         setLoadProgress('Cargando registros (comprimido 5MB)…');
-        // Load gzipped JSON and decompress in browser
         const rr = await fetch(dataUrl('data/nacional_mgmp.json.gz'));
         if (rr.ok && !cancelled) {
-          // Try native DecompressionStream (modern browsers)
           if (rr.body && typeof DecompressionStream !== 'undefined') {
             const ds = new DecompressionStream('gzip');
             const decompressed = rr.body.pipeThrough(ds);
@@ -402,7 +434,6 @@ export default function MercadoNacional() {
             const data: MovRecord[] = JSON.parse(text);
             setRecords(data);
           } else {
-            // Fallback: use pako for decompression
             const buf = await rr.arrayBuffer();
             const pako = await import('pako');
             const text = pako.inflate(buf, { to: 'string' });
@@ -1437,7 +1468,48 @@ export default function MercadoNacional() {
       }
       setRecords(mapped);
       setSelectedCompany(DEFAULT_COMPANY);
-      toast.success(`Excel cargado: ${fmt(mapped.length)} registros.`);
+      toast.success(`Excel cargado: ${fmt(mapped.length)} registros. Guardando en la nube…`);
+
+      // Guardar en Firebase para que persista entre sesiones
+      try {
+        const fbUrl = 'https://trazabilidad-9aa3c-default-rtdb.firebaseio.com';
+        // Guardar metadata (sin los registros completos para no saturar Firebase)
+        const metadata = {
+          fecha: new Date().toISOString(),
+          totalRegistros: mapped.length,
+          fileName: file.name,
+          fileSize: file.size,
+        };
+        await fetch(`${fbUrl}/mercado_nacional_meta.json`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(metadata),
+        });
+
+        // Guardar registros en chunks (Firebase tiene límite de 256MB por nodo)
+        // Dividir en lotes de 5000 registros
+        const CHUNK_SIZE = 5000;
+        const totalChunks = Math.ceil(mapped.length / CHUNK_SIZE);
+        for (let i = 0; i < totalChunks; i++) {
+          const chunk = mapped.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
+          await fetch(`${fbUrl}/mercado_nacional_data/${i}.json`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(chunk),
+          });
+        }
+        // Guardar el número total de chunks
+        await fetch(`${fbUrl}/mercado_nacional_meta/totalChunks.json`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(totalChunks),
+        });
+
+        toast.success(`✅ ${fmt(mapped.length)} registros guardados en la nube. Quedarán disponibles para futuras sesiones.`);
+      } catch (saveErr) {
+        console.error('Error guardando en Firebase:', saveErr);
+        toast.info(`Excel cargado: ${fmt(mapped.length)} registros (solo esta sesión). No se pudo guardar en la nube.`);
+      }
     } catch (err) {
       console.error('Mercado import error:', err);
       const msg = file.size > 50 * 1024 * 1024
