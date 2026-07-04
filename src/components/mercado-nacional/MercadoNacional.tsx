@@ -1326,10 +1326,23 @@ export default function MercadoNacional() {
     const tramite = String(pick('Nro. Trámite', 'Trámite', 't') || '').trim();
     if (!cf && !p && !cote && !tramite) return null;
     const fechaRaw = pick('Fecha', 'Fecha del Trámite', 'f');
-    const fecha = fechaRaw ? new Date(String(fechaRaw)).toISOString() : new Date().toISOString();
+    // Handle Date objects, Excel serial numbers, and strings
+    let fecha: string;
+    if (fechaRaw instanceof Date) {
+      fecha = fechaRaw.toISOString();
+    } else if (typeof fechaRaw === 'number') {
+      // Excel serial date (days since 1899-12-30)
+      const dt = new Date((fechaRaw - 25569) * 86400 * 1000);
+      fecha = isNaN(dt.getTime()) ? new Date().toISOString() : dt.toISOString();
+    } else if (fechaRaw) {
+      const dt = new Date(String(fechaRaw));
+      fecha = isNaN(dt.getTime()) ? new Date().toISOString() : dt.toISOString();
+    } else {
+      fecha = new Date().toISOString();
+    }
     return {
       t: tramite || `imp-${Date.now()}-${idx}`,
-      f: fecha,
+      f: fecha.substring(0, 10),
       c: cote,
       cf,
       p,
@@ -1358,19 +1371,65 @@ export default function MercadoNacional() {
     try {
       const XLSX = await import('xlsx');
       const ab = await file.arrayBuffer();
-      const wb = XLSX.read(ab, { type: 'array', cellDates: true });
-      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(wb.Sheets[wb.SheetNames[0]], { defval: '' });
+
+      // For large files (>20MB), use sheet_to_json with raw:true to avoid slow date parsing
+      const isLargeFile = file.size > 20 * 1024 * 1024;
+      const wb = XLSX.read(ab, { type: 'array', cellDates: !isLargeFile, raw: isLargeFile });
+      
+      // Process first sheet only
+      const sheetName = wb.SheetNames[0];
+      const sheet = wb.Sheets[sheetName];
+      
+      // For large files, read in chunks using sheet_to_json with header:1 (array of arrays, faster)
+      let rows: Record<string, unknown>[];
+      if (isLargeFile) {
+        // Read as array of arrays first (much faster for large files)
+        const rawRows = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: '', raw: true });
+        if (rawRows.length < 16) {
+          toast.error('El archivo no tiene suficientes filas.');
+          return;
+        }
+        // Find header row (row with 'Nro. Trámite' or similar)
+        let headerIdx = 0;
+        for (let i = 0; i < Math.min(20, rawRows.length); i++) {
+          if (rawRows[i] && rawRows[i].some((c: unknown) => String(c || '').includes('Trámite') || String(c || '').includes('tramite'))) {
+            headerIdx = i;
+            break;
+          }
+        }
+        const headers = (rawRows[headerIdx] as unknown[]).map((h: unknown) => String(h || ''));
+        // Map to objects
+        rows = rawRows.slice(headerIdx + 1).map((rawRow: unknown[]) => {
+          const obj: Record<string, unknown> = {};
+          headers.forEach((h: string, i: number) => {
+            obj[h] = rawRow[i] ?? '';
+          });
+          return obj;
+        });
+      } else {
+        rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '' });
+      }
+
+      // Free memory from the workbook
+      delete wb.Sheets[sheetName];
+
       const mapped = rows.map(mapExcelRow).filter((r): r is MovRecord => Boolean(r));
+      // Free rows memory
+      rows.length = 0;
+
       if (!mapped.length) {
-        toast.error('No pude reconocer registros en el Excel. Revisá encabezados como Certificador, Productor, COTE, Fecha, País, Corte, Peso Neto.');
+        toast.error('No pude reconocer registros. Revisá encabezados como Certificador, Productor, COTE, País, Corte, Peso Neto.');
         return;
       }
       setRecords(mapped);
       setSelectedCompany(DEFAULT_COMPANY);
-      toast.success(`Excel cargado: ${fmt(mapped.length)} registros. Ya podés preguntarle al asistente.`);
+      toast.success(`Excel cargado: ${fmt(mapped.length)} registros.`);
     } catch (err) {
       console.error('Mercado import error:', err);
-      toast.error('Error al leer el Excel de Mercado Nacional');
+      const msg = file.size > 50 * 1024 * 1024
+        ? `El archivo es muy grande (${(file.size / 1024 / 1024).toFixed(0)}MB). Probá exportarlo como CSV desde Excel (pesa 80% menos) y subirlo.`
+        : 'Error al leer el Excel. Si pesa más de 50MB, exportalo como CSV.';
+      toast.error(msg);
     } finally {
       setImportingExcel(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
