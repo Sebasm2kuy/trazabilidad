@@ -19,6 +19,8 @@ import NewRecordForm from '@/components/new-record/NewRecordForm';
 import AIAssistant from '@/components/AIAssistant';
 import { CentroInteligencia } from '@/components/centro/CentroInteligencia';
 import { CommandCenter } from '@/components/command-center/CommandCenter';
+import { OperacionCaliral } from '@/components/operacion-caliral/OperacionCaliral';
+import { ClientesEstrategicos } from '@/components/clientes-estrategicos/ClientesEstrategicos';
 import { initialPull } from '@/lib/googleSheets';
 import ErrorBoundary from '@/components/ErrorBoundary';
 
@@ -32,8 +34,10 @@ export default function Home() {
 
   const renderContent = () => {
     switch (activeTab) {
+      case 'operacion': return <OperacionCaliral />;
       case 'centro': return <CentroInteligencia />;
       case 'command-center': return <CommandCenter />;
+      case 'nirea': return <ClientesEstrategicos />;
       case 'dashboard': return <Dashboard />;
       case 'depositos': return <ShipmentTable />;
       case 'exportaciones': return <ExportacionesTable />;
@@ -47,7 +51,7 @@ export default function Home() {
       case 'analiticas': return <AnalyticsCharts />;
       case 'importar': return <ImportExportPanel />;
       case 'nuevo': return <NewRecordForm />;
-      default: return <CentroInteligencia />;
+      default: return <OperacionCaliral />;
     }
   };
 

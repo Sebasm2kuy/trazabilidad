@@ -2,30 +2,76 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useAppStore } from '@/store/useAppStore';
-import { LayoutDashboard, Warehouse, Ship, ArrowLeftRight, Search, GitCompare, BarChart3, Download, PlusCircle, Settings, Cloud, CloudOff, Menu, Globe, Sparkles, Activity, Radio } from 'lucide-react';
+import {
+  LayoutDashboard, Warehouse, Ship, ArrowLeftRight, Search, GitCompare, BarChart3,
+  Download, PlusCircle, Settings, Cloud, CloudOff, Menu, Globe, Sparkles, Activity,
+  Radio, Home, Briefcase, Wrench, FileText, Users,
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { isConfigured, getLastSync } from '@/lib/googleSheets';
 import SettingsSheet from '@/components/SettingsSheet';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { useIsMobile } from '@/hooks/use-mobile';
 
-const tabs = [
-  { id: 'centro' as const, label: 'Centro de Inteligencia', icon: Activity },
-  { id: 'command-center' as const, label: 'Command Center (Digital Twin)', icon: Radio },
-  { id: 'dashboard' as const, label: 'Dashboard', icon: LayoutDashboard },
-  { id: 'depositos' as const, label: 'A Depósitos', icon: Warehouse },
-  { id: 'exportaciones' as const, label: 'Exportaciones', icon: Ship },
-  { id: 'cruce-caliral' as const, label: 'Cruces Frimaral', icon: ArrowLeftRight },
-  { id: 'cruces-x-cote' as const, label: 'Cruces X COTE', icon: GitCompare },
-  { id: 'mercado-nacional' as const, label: 'Mercado Nacional', icon: Globe },
-  { id: 'hallazgos' as const, label: 'Hallazgos', icon: Sparkles },
-  { id: 'trazabilidad-explorer' as const, label: 'Trazabilidad', icon: Search },
-  { id: 'trazabilidad' as const, label: 'Búsqueda', icon: Search },
-  { id: 'comparativa' as const, label: 'Comparativa', icon: GitCompare },
-  { id: 'analiticas' as const, label: 'Analíticas', icon: BarChart3 },
-  { id: 'importar' as const, label: 'Importar / Exportar', icon: Download },
-  { id: 'nuevo' as const, label: 'Nuevo Registro', icon: PlusCircle },
+type TabId =
+  | 'operacion' | 'command-center' | 'nirea' | 'centro'
+  | 'dashboard' | 'depositos' | 'exportaciones' | 'cruce-caliral' | 'cruces-x-cote'
+  | 'mercado-nacional' | 'hallazgos' | 'trazabilidad-explorer' | 'trazabilidad'
+  | 'comparativa' | 'analiticas' | 'importar' | 'nuevo';
+
+interface NavItem {
+  id: TabId;
+  label: string;
+  icon: any;
+}
+
+interface NavSection {
+  title: string;
+  items: NavItem[];
+}
+
+const NAV_SECTIONS: NavSection[] = [
+  {
+    title: 'Operación CALIRAL',
+    items: [
+      { id: 'operacion', label: 'Inicio', icon: Home },
+      { id: 'command-center', label: 'Digital Twin', icon: Radio },
+      { id: 'trazabilidad-explorer', label: 'Trazabilidad', icon: Search },
+      { id: 'trazabilidad', label: 'Búsqueda COTE', icon: Search },
+    ],
+  },
+  {
+    title: 'Inteligencia Comercial',
+    items: [
+      { id: 'nirea', label: 'Clientes Estratégicos', icon: Briefcase },
+      { id: 'mercado-nacional', label: 'Mercado Nacional', icon: Globe },
+      { id: 'hallazgos', label: 'Hallazgos', icon: Sparkles },
+      { id: 'comparativa', label: 'Comparativa', icon: GitCompare },
+    ],
+  },
+  {
+    title: 'Administración',
+    items: [
+      { id: 'depositos', label: 'A Depósitos', icon: Warehouse },
+      { id: 'exportaciones', label: 'Exportaciones', icon: Ship },
+      { id: 'cruce-caliral', label: 'Cruces Frimaral', icon: ArrowLeftRight },
+      { id: 'cruces-x-cote', label: 'Cruces X COTE', icon: GitCompare },
+      { id: 'nuevo', label: 'Nuevo Registro', icon: PlusCircle },
+      { id: 'importar', label: 'Importar / Exportar', icon: Download },
+    ],
+  },
+  {
+    title: 'Avanzado',
+    items: [
+      { id: 'centro', label: 'Centro de Inteligencia', icon: Activity },
+      { id: 'dashboard', label: 'Dashboard legacy', icon: LayoutDashboard },
+      { id: 'analiticas', label: 'Analíticas', icon: BarChart3 },
+    ],
+  },
 ];
+
+// Flat list for keyboard shortcut compat
+const tabs = NAV_SECTIONS.flatMap(s => s.items);
 
 function SidebarContent({
   onNavigate,
@@ -123,56 +169,61 @@ function SidebarContent({
         </div>
       </div>
 
-      <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
-        {tabs.map((tab, index) => {
-          const Icon = tab.icon;
-          const active = activeTab === tab.id;
-          const isHovered = hoveredTab === tab.id;
-          return (
-            <button
-              key={tab.id}
-              onClick={() => handleTabClick(tab.id)}
-              onMouseEnter={() => setHoveredTab(tab.id)}
-              onMouseLeave={() => setHoveredTab(null)}
-              className={cn(
-                'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all relative',
-                active
-                  ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/20'
-                  : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-              )}
-            >
-              {/* Active tab indicator - emerald bar on left edge */}
-              {active && (
-                <span className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-[1px] w-[3px] h-5 bg-emerald-300 rounded-r-full" />
-              )}
-
-              <Icon className="h-4 w-4 shrink-0" />
-              <span className="flex-1 text-left">{tab.label}</span>
-
-              {/* Keyboard shortcut hint */}
-              <span
-                className={cn(
-                  'text-[10px] font-mono px-1.5 py-0.5 rounded transition-colors',
-                  active
-                    ? 'text-emerald-200 bg-emerald-700/50'
-                    : 'text-slate-500 bg-slate-800'
-                )}
-              >
-                {index + 1}
-              </span>
-
-              {/* Hover arrow */}
-              <span
-                className={cn(
-                  'text-xs transition-opacity duration-150',
-                  isHovered && !active ? 'opacity-100 text-slate-400' : 'opacity-0'
-                )}
-              >
-                →
-              </span>
-            </button>
-          );
-        })}
+      <nav className="flex-1 p-3 space-y-3 overflow-y-auto">
+        {NAV_SECTIONS.map((section, sectionIdx) => (
+          <div key={section.title}>
+            <p className="text-[9px] font-bold uppercase tracking-widest text-slate-500 px-3 mb-1 mt-1">
+              {section.title}
+            </p>
+            <div className="space-y-0.5">
+              {section.items.map((tab) => {
+                const Icon = tab.icon;
+                const active = activeTab === tab.id;
+                const isHovered = hoveredTab === tab.id;
+                // Global index for keyboard shortcut
+                const globalIdx = tabs.findIndex(t => t.id === tab.id);
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => handleTabClick(tab.id)}
+                    onMouseEnter={() => setHoveredTab(tab.id)}
+                    onMouseLeave={() => setHoveredTab(null)}
+                    className={cn(
+                      'w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all relative',
+                      active
+                        ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/20'
+                        : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                    )}
+                  >
+                    {active && (
+                      <span className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-[1px] w-[3px] h-5 bg-emerald-300 rounded-r-full" />
+                    )}
+                    <Icon className="h-4 w-4 shrink-0" />
+                    <span className="flex-1 text-left">{tab.label}</span>
+                    {globalIdx < 9 && (
+                      <span
+                        className={cn(
+                          'text-[10px] font-mono px-1.5 py-0.5 rounded transition-colors',
+                          active
+                            ? 'text-emerald-200 bg-emerald-700/50'
+                            : 'text-slate-500 bg-slate-800'
+                        )}
+                      >
+                        {globalIdx + 1}
+                      </span>
+                    )}
+                    <span
+                      className={cn(
+                        'text-xs transition-opacity duration-150',
+                        isHovered && !active ? 'opacity-100 text-slate-400' : 'opacity-0'
+                      )}
+                    >→</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
       </nav>
       <div className="p-4 border-t border-slate-700 space-y-1">
         {configured && lastSync && (

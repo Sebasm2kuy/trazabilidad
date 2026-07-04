@@ -15,9 +15,12 @@ import {
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
 import {
   Info, Package, FileText, ArrowLeftRight, GitBranch, BarChart3, History,
   Hash, Building2, Users, Warehouse, MapPin, Package as PackageIcon, Ship,
+  Bot, MessageSquare, Plus,
 } from 'lucide-react';
 import { useEntityDrawer } from '@/store/useEntityDrawer';
 import { loadDepositos, loadExportaciones } from '@/lib/dataRepository';
@@ -149,7 +152,7 @@ export function EntityDrawer() {
         </SheetHeader>
 
         <Tabs defaultValue="general" className="flex-1 flex flex-col overflow-hidden">
-          <TabsList className="grid grid-cols-7 mx-4 mt-3 h-9 text-[11px]">
+          <TabsList className="grid grid-cols-9 mx-4 mt-3 h-9 text-[10px]">
             <TabsTrigger value="general"><Info className="w-3 h-3 mr-1" />General</TabsTrigger>
             <TabsTrigger value="mercaderia"><Package className="w-3 h-3 mr-1" />Mercadería</TabsTrigger>
             <TabsTrigger value="docs"><FileText className="w-3 h-3 mr-1" />Docs</TabsTrigger>
@@ -157,6 +160,8 @@ export function EntityDrawer() {
             <TabsTrigger value="traz"><GitBranch className="w-3 h-3 mr-1" />Trazab.</TabsTrigger>
             <TabsTrigger value="analisis"><BarChart3 className="w-3 h-3 mr-1" />Análisis</TabsTrigger>
             <TabsTrigger value="hist"><History className="w-3 h-3 mr-1" />Historial</TabsTrigger>
+            <TabsTrigger value="obs"><MessageSquare className="w-3 h-3 mr-1" />Obs.</TabsTrigger>
+            <TabsTrigger value="copilot"><Bot className="w-3 h-3 mr-1" />Copilot</TabsTrigger>
           </TabsList>
 
           <ScrollArea className="flex-1 px-6 py-4">
@@ -305,6 +310,25 @@ export function EntityDrawer() {
                 El historial de cambios estará disponible cuando se habilite la auditoría de ediciones.
               </div>
             </TabsContent>
+
+            <TabsContent value="obs" className="mt-0">
+              <ObservacionesTab entityType={entityType} entityId={entityId} />
+            </TabsContent>
+
+            <TabsContent value="copilot" className="mt-0">
+              <CopilotTab
+                entityType={entityType}
+                entityId={entityId}
+                context={{
+                  totalPn,
+                  totalEnvases,
+                  ingresos: related?.depositos.length || 0,
+                  exportaciones: related?.exportaciones.length || 0,
+                  paises: Array.from(uniquePaises),
+                  productores: Array.from(uniqueProductores),
+                }}
+              />
+            </TabsContent>
           </ScrollArea>
         </Tabs>
       </SheetContent>
@@ -332,4 +356,231 @@ function Field({ label, value }: { label: string; value: string }) {
 
 function Empty() {
   return <div className="text-xs text-slate-500 text-center py-6">Sin información disponible.</div>;
+}
+
+// ============================================================
+// ObservacionesTab — Notas persistentes por entidad
+// ============================================================
+
+function ObservacionesTab({ entityType, entityId }: { entityType: EntityType; entityId: string }) {
+  const storageKey = `trazabilidad_observaciones_${entityType}_${entityId}`;
+  const [notes, setNotes] = useState<{ id: string; text: string; timestamp: string; author: string }[]>([]);
+  const [newNote, setNewNote] = useState('');
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(storageKey);
+      if (raw) setNotes(JSON.parse(raw));
+    } catch { /* noop */ }
+  }, [storageKey]);
+
+  function save(updated: typeof notes) {
+    setNotes(updated);
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(updated));
+    } catch (e) {
+      console.error('[obs] no se pudo persistir:', e);
+    }
+  }
+
+  function addNote() {
+    if (!newNote.trim()) return;
+    const note = {
+      id: `obs_${Date.now().toString(36)}`,
+      text: newNote.trim(),
+      timestamp: new Date().toISOString(),
+      author: 'usuario',
+    };
+    save([note, ...notes]);
+    setNewNote('');
+  }
+
+  function deleteNote(id: string) {
+    save(notes.filter(n => n.id !== id));
+  }
+
+  return (
+    <div className="space-y-3">
+      <div>
+        <Textarea
+          value={newNote}
+          onChange={e => setNewNote(e.target.value)}
+          placeholder="Agregar observación sobre esta mercadería…"
+          className="text-xs min-h-[80px]"
+        />
+        <Button onClick={addNote} size="sm" className="mt-2 w-full">
+          <Plus className="w-3 h-3 mr-1" /> Agregar observación
+        </Button>
+      </div>
+
+      {notes.length === 0 ? (
+        <p className="text-xs text-center text-slate-500 py-6">Sin observaciones registradas.</p>
+      ) : (
+        <div className="space-y-2">
+          {notes.map(n => (
+            <div key={n.id} className="rounded-lg border border-slate-200 dark:border-slate-800 p-3 bg-white dark:bg-slate-900">
+              <div className="flex items-start justify-between gap-2 mb-1">
+                <span className="text-[10px] text-slate-500">
+                  {new Date(n.timestamp).toLocaleString('es-UY')} · {n.author}
+                </span>
+                <button
+                  onClick={() => deleteNote(n.id)}
+                  className="text-[10px] text-red-500 hover:text-red-700"
+                >
+                  Eliminar
+                </button>
+              </div>
+              <p className="text-xs text-slate-700 dark:text-slate-200 whitespace-pre-wrap">{n.text}</p>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================
+// CopilotTab — Asistente contextual sobre la entidad
+// ============================================================
+
+interface CopilotContext {
+  totalPn: number;
+  totalEnvases: number;
+  ingresos: number;
+  exportaciones: number;
+  paises: string[];
+  productores: string[];
+}
+
+function CopilotTab({ entityType, entityId, context }: {
+  entityType: EntityType;
+  entityId: string;
+  context: CopilotContext;
+}) {
+  const [question, setQuestion] = useState('');
+  const [answer, setAnswer] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const suggestedQuestions = [
+    '¿Dónde está esta mercadería?',
+    '¿Qué movimientos tuvo?',
+    '¿Cuánto tiempo lleva en depósito?',
+    '¿Tiene documentación completa?',
+    '¿Cuál es su estado actual?',
+  ];
+
+  async function ask(q?: string) {
+    const query = (q || question).trim();
+    if (!query) return;
+    setLoading(true);
+    setAnswer(null);
+    try {
+      // Construir contexto para la IA
+      const ctxText = `
+Entidad: ${entityType} ${entityId}
+Peso neto total: ${context.totalPn.toLocaleString('es-UY')} kg
+Envases totales: ${context.totalEnvases.toLocaleString('es-UY')}
+Ingresos a depósito: ${context.ingresos}
+Exportaciones: ${context.exportaciones}
+Países: ${context.paises.join(', ') || '—'}
+Productores: ${context.productores.join(', ') || '—'}
+`.trim();
+
+      // Intentar Puter.js si está disponible
+      const puter = (window as any).puter;
+      if (puter?.chat?.create) {
+        const resp = await puter.chat.create([
+          { role: 'system', content: 'Sos un asistente operativo especializado en trazabilidad de mercadería cárnica para CALIRAL. Respondé en español, de forma concisa y operativa. Basate en el contexto proporcionado.' },
+          { role: 'user', content: `Contexto:\n${ctxText}\n\nPregunta: ${query}` },
+        ]);
+        const text = typeof resp === 'string' ? resp : (resp?.message?.content?.[0]?.text || resp?.message?.content || 'Sin respuesta');
+        setAnswer(typeof text === 'string' ? text : JSON.stringify(text));
+      } else {
+        // Fallback: respuesta local basada en el contexto
+        setAnswer(generateLocalAnswer(query, context, entityType, entityId));
+      }
+    } catch (e) {
+      console.error('[copilot-tab] error:', e);
+      setAnswer(generateLocalAnswer(query, context, entityType, entityId));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="rounded-lg bg-violet-50 dark:bg-violet-950/30 border border-violet-200 dark:border-violet-900 p-3">
+        <div className="flex items-center gap-2 mb-2">
+          <Bot className="w-4 h-4 text-violet-600" />
+          <p className="text-xs font-semibold text-violet-800 dark:text-violet-200">
+            Copilot Operacional
+          </p>
+        </div>
+        <p className="text-[11px] text-violet-700 dark:text-violet-300">
+          Preguntá sobre esta mercadería. El copilot tiene acceso al contexto operativo.
+        </p>
+      </div>
+
+      {/* Preguntas sugeridas */}
+      <div className="flex flex-wrap gap-1">
+        {suggestedQuestions.map(q => (
+          <button
+            key={q}
+            onClick={() => { setQuestion(q); ask(q); }}
+            disabled={loading}
+            className="text-[10px] px-2 py-1 rounded-full border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-violet-50 dark:hover:bg-violet-950/30 hover:border-violet-300 disabled:opacity-50"
+          >
+            {q}
+          </button>
+        ))}
+      </div>
+
+      {/* Input */}
+      <div className="flex gap-2">
+        <input
+          type="text"
+          value={question}
+          onChange={e => setQuestion(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && ask()}
+          placeholder="Escribí tu pregunta…"
+          className="flex-1 text-xs px-3 py-2 rounded border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900"
+          disabled={loading}
+        />
+        <Button onClick={() => ask()} disabled={loading || !question.trim()} size="sm">
+          {loading ? '…' : 'Preguntar'}
+        </Button>
+      </div>
+
+      {/* Respuesta */}
+      {answer && (
+        <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3">
+          <p className="text-xs text-slate-700 dark:text-slate-200 whitespace-pre-wrap leading-relaxed">
+            {answer}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function generateLocalAnswer(query: string, ctx: CopilotContext, entityType: EntityType, entityId: string): string {
+  const q = query.toLowerCase();
+  const fmt = (n: number) => n.toLocaleString('es-UY');
+
+  if (q.includes('dónde') || q.includes('donde') || q.includes('ubicación') || q.includes('ubicacion')) {
+    return `La mercadería ${entityId} tiene ${ctx.ingresos} registro(s) de ingreso a depósito y ${ctx.exportaciones} exportación(es) vinculadas. Peso total: ${fmt(ctx.totalPn)} kg en ${ctx.totalEnvases} envases.`;
+  }
+  if (q.includes('movimiento')) {
+    return `Movimientos registrados: ${ctx.ingresos} ingreso(s) a depósito, ${ctx.exportaciones} exportación(es). Total: ${ctx.ingresos + ctx.exportaciones} movimientos.`;
+  }
+  if (q.includes('tiempo') || q.includes('cuánto') || q.includes('cuanto')) {
+    return `Para calcular el tiempo exacto en depósito, abrí el tab "Movs" o "Trazab." para ver las fechas. El registro tiene ${fmt(ctx.totalPn)} kg.`;
+  }
+  if (q.includes('document') || q.includes('doc')) {
+    return `Revisá el tab "Docs" para ver fechas de faena, producción, congelación y trámite. Hay ${ctx.ingresos} registro(s) de ingreso documentado(s).`;
+  }
+  if (q.includes('estado')) {
+    return `La mercadería ${entityId} tiene ${fmt(ctx.totalPn)} kg distribuidos en ${ctx.ingresos + ctx.exportaciones} operaciones. Países destino: ${ctx.paises.join(', ') || 'sin destino asignado'}.`;
+  }
+  return `Información sobre ${entityId}: ${fmt(ctx.totalPn)} kg en ${ctx.totalEnvases} envases. ${ctx.ingresos} ingresos, ${ctx.exportaciones} exportaciones. Países: ${ctx.paises.join(', ') || '—'}.`;
 }
