@@ -136,8 +136,8 @@ function SidebarContent({
     <>
       <div className="p-5 border-b border-slate-700 flex items-center justify-between">
         <div>
-          <h1 className="text-lg font-bold text-emerald-400">Trazabilidad</h1>
-          <p className="text-xs text-slate-400 mt-1">Frigorífico San Jacinto</p>
+          <h1 className="text-lg font-bold text-emerald-400">Trazabilidad Frimaral</h1>
+          <p className="text-xs text-slate-400 mt-1">Caliral S.A.</p>
         </div>
         <button
           onClick={() => setSettingsOpen(true)}
@@ -233,7 +233,7 @@ function SidebarContent({
           </p>
         )}
         <div className="flex items-center justify-between">
-          <p className="text-[10px] text-slate-500">v1.2 — Nirea S.A.</p>
+          <p className="text-[10px] text-slate-500">v1.2 — Caliral S.A.</p>
           <button
             onClick={() => setSettingsOpen(true)}
             className="text-slate-500 hover:text-slate-300 transition-colors"
@@ -277,7 +277,7 @@ export default function Sidebar() {
               </div>
             </SheetContent>
           </Sheet>
-          <h1 className="text-lg font-bold text-emerald-400 ml-3">Trazabilidad</h1>
+          <h1 className="text-lg font-bold text-emerald-400 ml-3">Trazabilidad Frimaral</h1>
         </div>
       </>
     );

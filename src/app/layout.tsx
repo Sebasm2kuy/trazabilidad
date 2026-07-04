@@ -4,7 +4,7 @@ import { Toaster as SonnerToaster } from "sonner";
 import Script from "next/script";
 
 export const metadata: Metadata = {
-  title: "Trazabilidad - Frigorífico San Jacinto",
+  title: "Trazabilidad Frimaral - Caliral S.A.",
   description: "Sistema de trazabilidad y control de envíos de carne",
   icons: {
     icon: "https://z-cdn.chatglm.cn/z-ai/static/logo.svg",
