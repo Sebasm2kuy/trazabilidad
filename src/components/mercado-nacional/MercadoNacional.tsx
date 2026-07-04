@@ -436,7 +436,8 @@ export default function MercadoNacional() {
           } else {
             const buf = await rr.arrayBuffer();
             const pako = await import('pako');
-            const text = pako.inflate(buf, { to: 'string' });
+            const decompressed = pako.inflate(new Uint8Array(buf));
+            const text = new TextDecoder().decode(decompressed);
             const data: MovRecord[] = JSON.parse(text);
             setRecords(data);
           }
