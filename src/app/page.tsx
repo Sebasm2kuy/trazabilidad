@@ -18,6 +18,7 @@ import ImportExportPanel from '@/components/import-export/ImportExportPanel';
 import NewRecordForm from '@/components/new-record/NewRecordForm';
 import AIAssistant from '@/components/AIAssistant';
 import { CentroInteligencia } from '@/components/centro/CentroInteligencia';
+import { CommandCenter } from '@/components/command-center/CommandCenter';
 import { initialPull } from '@/lib/googleSheets';
 import ErrorBoundary from '@/components/ErrorBoundary';
 
@@ -32,6 +33,7 @@ export default function Home() {
   const renderContent = () => {
     switch (activeTab) {
       case 'centro': return <CentroInteligencia />;
+      case 'command-center': return <CommandCenter />;
       case 'dashboard': return <Dashboard />;
       case 'depositos': return <ShipmentTable />;
       case 'exportaciones': return <ExportacionesTable />;
