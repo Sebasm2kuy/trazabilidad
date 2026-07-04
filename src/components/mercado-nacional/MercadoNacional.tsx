@@ -390,11 +390,25 @@ export default function MercadoNacional() {
         const ra = await fetch(dataUrl('data/nacional_analytics.json'));
         if (ra.ok && !cancelled) setAnalytics(await ra.json());
 
-        setLoadProgress('Cargando 62.984 registros (21.7 MB)…');
-        const rr = await fetch(dataUrl('data/nacional_mgmp.json'));
+        setLoadProgress('Cargando registros (comprimido 5MB)…');
+        // Load gzipped JSON and decompress in browser
+        const rr = await fetch(dataUrl('data/nacional_mgmp.json.gz'));
         if (rr.ok && !cancelled) {
-          const data: MovRecord[] = await rr.json();
-          setRecords(data);
+          // Try native DecompressionStream (modern browsers)
+          if (rr.body && typeof DecompressionStream !== 'undefined') {
+            const ds = new DecompressionStream('gzip');
+            const decompressed = rr.body.pipeThrough(ds);
+            const text = await new Response(decompressed).text();
+            const data: MovRecord[] = JSON.parse(text);
+            setRecords(data);
+          } else {
+            // Fallback: use pako for decompression
+            const buf = await rr.arrayBuffer();
+            const pako = await import('pako');
+            const text = pako.inflate(buf, { to: 'string' });
+            const data: MovRecord[] = JSON.parse(text);
+            setRecords(data);
+          }
         }
       } catch (err) {
         console.error('Error loading data:', err);
@@ -1605,7 +1619,7 @@ export default function MercadoNacional() {
                   ))}
                 </select>
               </div>
-              <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleExcelUpload} />
+              <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv,.xlsb" className="hidden" onChange={handleExcelUpload} />
               <Button
                 variant="outline"
                 size="sm"

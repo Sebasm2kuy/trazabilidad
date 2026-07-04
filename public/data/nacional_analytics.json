@@ -1,458 +1,486 @@
 {
-  "total": 62984,
-  "totalCajas": 12443419,
-  "totalPeso": 341123198,
+  "total": 222303,
+  "totalCajas": 42112987,
+  "totalPeso": 1132967145,
   "paises": [
     [
       "CHINA",
-      14534
+      51923
     ],
     [
       "ESTADOS UNIDOS",
-      11314
-    ],
-    [
-      "HOLANDA",
-      5690
-    ],
-    [
-      "ISRAEL",
-      4552
+      35921
     ],
     [
       "CHINA (sólo a Depósitos)",
-      3965
+      25074
+    ],
+    [
+      "HOLANDA",
+      20774
+    ],
+    [
+      "ISRAEL",
+      11906
     ],
     [
       "UNION EUROPEA (sólo a Depósito)",
-      3531
-    ],
-    [
-      "ESPAÑA",
-      2310
-    ],
-    [
-      "JAPON",
-      2177
-    ],
-    [
-      "PORTUGAL",
-      2163
+      11609
     ],
     [
       "ITALIA",
-      1587
+      7052
     ],
     [
-      "ALEMANIA",
-      1510
+      "ESPAÑA",
+      6960
+    ],
+    [
+      "PORTUGAL",
+      6548
+    ],
+    [
+      "JAPON",
+      5536
     ],
     [
       "TERCEROS PAISES (sólo a Depósitos)",
-      1470
+      4637
     ],
     [
-      "SUIZA",
-      834
-    ],
-    [
-      "NORUEGA",
-      784
-    ],
-    [
-      "BRASIL",
-      679
-    ],
-    [
-      "FRANCIA",
-      537
-    ],
-    [
-      "CHILE",
-      537
+      "ALEMANIA",
+      4586
     ],
     [
       "CANADA",
-      514
+      2707
+    ],
+    [
+      "NORUEGA",
+      2603
+    ],
+    [
+      "BRASIL",
+      2520
+    ],
+    [
+      "SUIZA",
+      2499
+    ],
+    [
+      "REINO UNIDO",
+      2267
     ],
     [
       "ESTADOS UNIDOS (sólo a Deposito)",
-      482
+      2140
     ],
     [
       "RUSIA",
-      392
+      1674
+    ],
+    [
+      "FRANCIA",
+      1305
     ]
   ],
   "productores": [
     [
       "Frigorífico Tacuarembó S.A.",
-      12515
-    ],
-    [
-      "Frigorífico Pul (Pulsa S.A.)",
-      6235
-    ],
-    [
-      "Breeders & Packers Uruguay S.A.",
-      4975
-    ],
-    [
-      "Frigorífico Las Piedras S.A.",
-      4660
-    ],
-    [
-      "Frigorífico La Caballada (Cledinor S.A.)",
-      4198
+      48364
     ],
     [
       "Frigorífico San Jacinto (Nirea S.A.)",
-      4137
+      20106
+    ],
+    [
+      "Frigorífico Pul (Pulsa S.A.)",
+      17811
+    ],
+    [
+      "Frigorífico Las Piedras S.A.",
+      13993
+    ],
+    [
+      "Frigorífico La Caballada (Cledinor S.A.)",
+      13002
     ],
     [
       "Frigorífico Matadero Pando (Ontilcor S.A.)",
-      4003
+      11464
     ],
     [
       "Inaler S.A.",
-      3762
+      11429
     ],
     [
-      "Frigorífico Canelones S.A.",
-      2979
+      "Breeders & Packers Uruguay S.A.",
+      10075
+    ],
+    [
+      "Frigorífico Carrasco S.A.",
+      9779
     ],
     [
       "Frigoyí (Bilacor S.A.)",
-      2714
-    ],
-    [
-      "Frigorífico Sirsil S.A. (Sirsil S.A.)",
-      2162
-    ],
-    [
-      "Frigorífico Las Moras (Chiadel S.A.)",
-      2118
-    ],
-    [
-      "Copayan S.A.",
-      1991
-    ],
-    [
-      "Solís Meat Uruguay (Ersinal S.A.)",
-      1593
+      9734
     ],
     [
       "Establecimientos Colonia S.A.",
-      1412
+      9452
     ],
     [
-      "Frigorífico Clay S.A.",
-      1236
+      "Frigorífico Canelones S.A.",
+      9271
+    ],
+    [
+      "Copayan S.A.",
+      7423
+    ],
+    [
+      "Frigorífico Las Moras (Chiadel S.A.)",
+      7391
+    ],
+    [
+      "Frigorífico Sirsil S.A. (Sirsil S.A.)",
+      7237
     ],
     [
       "Frigorífico Casa Blanca",
-      669
+      3850
+    ],
+    [
+      "Solís Meat Uruguay (Ersinal S.A.)",
+      3793
+    ],
+    [
+      "Frigorífico Clay S.A.",
+      3031
     ],
     [
       "Frigorífico Durazno (Frigocerro S.A.)",
-      358
-    ],
-    [
-      "Frigorífico La Trinidad (Oferan S.A.)",
-      226
+      1278
     ],
     [
       "Frigorífico Sarel S.A.",
-      196
+      809
     ],
     [
-      "Frigorífico El Amanecer (Agroindustrial Del Este S.A.)",
-      193
+      "Frigorífico La Trinidad (Oferan S.A.)",
+      643
     ],
     [
       "Zutfray S.A.",
-      184
+      403
+    ],
+    [
+      "Frigorífico El Amanecer (Agroindustrial Del Este S.A.)",
+      301
+    ],
+    [
+      "Bamidal S.A.",
+      291
     ],
     [
       "Coltirey S.A.",
-      107
-    ],
-    [
-      "Cardama S.A.",
-      58
-    ],
-    [
-      "Frigosalto (Somicar S.A.)",
-      53
+      290
     ]
   ],
   "certificadores": [
     [
       "Frigorífico Tacuarembó S.A.",
-      10918
-    ],
-    [
-      "Frigorífico Pul (Pulsa S.A.)",
-      5189
-    ],
-    [
-      "Breeders & Packers Uruguay S.A.",
-      4952
-    ],
-    [
-      "Frigorífico Las Piedras S.A.",
-      4660
-    ],
-    [
-      "Frigorífico La Caballada (Cledinor S.A.)",
-      4168
-    ],
-    [
-      "Frigorífico Matadero Pando (Ontilcor S.A.)",
-      4002
-    ],
-    [
-      "Inaler S.A.",
-      3833
+      42820
     ],
     [
       "Frigorífico San Jacinto (Nirea S.A.)",
-      3264
+      16771
     ],
     [
-      "Frigorífico Canelones S.A.",
-      2953
+      "Frigorífico Pul (Pulsa S.A.)",
+      15525
     ],
     [
-      "Frigoyí (Bilacor S.A.)",
-      2714
+      "Frigorífico Las Piedras S.A.",
+      13993
     ],
     [
-      "Frigorífico Arbiza S.A.",
-      2219
+      "Frigorífico La Caballada (Cledinor S.A.)",
+      12951
     ],
     [
-      "Frigorífico Sirsil S.A. (Sirsil S.A.)",
-      2162
+      "Inaler S.A.",
+      11501
     ],
     [
-      "Copayan S.A.",
-      1991
+      "Frigorífico Matadero Pando (Ontilcor S.A.)",
+      11447
     ],
     [
-      "Frigorífico Las Moras (Chiadel S.A.)",
-      1928
+      "Breeders & Packers Uruguay S.A.",
+      9960
     ],
     [
       "Establecimientos Colonia S.A.",
-      1726
+      9757
     ],
     [
-      "Telacar S.A.S.",
-      1238
+      "Frigoyí (Bilacor S.A.)",
+      9734
     ],
     [
-      "Frigorífico Clay S.A.",
-      1095
-    ],
-    [
-      "Solís Meat Uruguay (Ersinal S.A.)",
-      902
-    ],
-    [
-      "Dinolar S.A.",
-      720
-    ],
-    [
-      "Frigorífico Casa Blanca",
-      668
-    ],
-    [
-      "Frigorífico Durazno (Frigocerro S.A.)",
-      358
-    ],
-    [
-      "Frigorífico La Trinidad (Oferan S.A.)",
-      226
-    ],
-    [
-      "Frigorífico Sarel S.A.",
-      196
-    ],
-    [
-      "Frigorífico El Amanecer (Agroindustrial Del Este S.A.)",
-      193
-    ],
-    [
-      "Zutfray S.A.",
-      184
-    ],
-    [
-      "Coltirey S.A.",
-      98
-    ],
-    [
-      "Caliral S. A.",
-      96
-    ],
-    [
-      "Cardama S.A.",
-      58
-    ],
-    [
-      "Frigosalto (Somicar S.A.)",
-      53
-    ],
-    [
-      "Granja Tres Arroyos Uruguay S.A.",
-      47
-    ],
-    [
-      "Despro S.A.",
-      35
-    ],
-    [
-      "Berdick S.A.",
-      29
-    ],
-    [
-      "Yarus S.A.",
-      21
+      "Frigorífico Canelones S.A.",
+      9177
     ],
     [
       "Frigorífico Carrasco S.A.",
-      16
+      8171
     ],
     [
-      "Tecnoblen S.A.",
-      15
+      "Frigorífico Arbiza S.A.",
+      8005
+    ],
+    [
+      "Copayan S.A.",
+      7418
+    ],
+    [
+      "Frigorífico Sirsil S.A. (Sirsil S.A.)",
+      7231
+    ],
+    [
+      "Frigorífico Las Moras (Chiadel S.A.)",
+      6495
+    ],
+    [
+      "Telacar S.A.S.",
+      5274
+    ],
+    [
+      "Frigorífico Casa Blanca",
+      3849
+    ],
+    [
+      "Frigorífico Clay S.A.",
+      2777
+    ],
+    [
+      "Solís Meat Uruguay (Ersinal S.A.)",
+      2241
+    ],
+    [
+      "Dinolar S.A.",
+      1720
+    ],
+    [
+      "Frigorífico Durazno (Frigocerro S.A.)",
+      1278
+    ],
+    [
+      "Frigorífico Sarel S.A.",
+      809
+    ],
+    [
+      "Frigorífico La Trinidad (Oferan S.A.)",
+      643
+    ],
+    [
+      "Caliral S. A.",
+      506
+    ],
+    [
+      "Zutfray S.A.",
+      403
+    ],
+    [
+      "Frigorífico El Amanecer (Agroindustrial Del Este S.A.)",
+      301
+    ],
+    [
+      "Coltirey S.A.",
+      261
+    ],
+    [
+      "Bamidal S.A.",
+      212
+    ],
+    [
+      "Cardama S.A.",
+      175
+    ],
+    [
+      "Frigosalto (Somicar S.A.)",
+      142
+    ],
+    [
+      "Despro S.A.",
+      110
+    ],
+    [
+      "Berdick S.A.",
+      106
+    ],
+    [
+      "Granja Tres Arroyos Uruguay S.A.",
+      105
+    ],
+    [
+      "Yarus S.A.",
+      75
     ],
     [
       "Grinsol S.A.",
-      12
+      64
     ],
     [
-      "Artica Biotech",
-      9
+      "Tecnoblen S.A.",
+      59
     ],
     [
-      "Readypoint S.A.",
-      8
+      "Suc. Carlos Schneck S.A.",
+      53
     ],
     [
       "CVF Ltda.",
-      8
+      36
     ],
     [
-      "Establecimientos Juan Sarubbi S.A.",
-      6
-    ],
-    [
-      "Mvdmart S.A.",
-      5
-    ],
-    [
-      "Probiomont S.A.",
-      4
-    ],
-    [
-      "Montesera S.A.",
-      2
-    ],
-    [
-      "Fanaphru S.A.",
-      2
+      "Readypoint S.A.",
+      32
     ],
     [
       "LONSA SCIENCE S.R.L.",
-      1
+      29
+    ],
+    [
+      "Artica Biotech",
+      29
+    ],
+    [
+      "Establecimientos Juan Sarubbi S.A.",
+      17
+    ],
+    [
+      "Probiomont S.A.",
+      13
+    ],
+    [
+      "TILEO S.A.",
+      11
+    ],
+    [
+      "Mvdmart S.A.",
+      11
+    ],
+    [
+      "Fanaphru S.A.",
+      3
+    ],
+    [
+      "Montesera S.A.",
+      3
     ]
   ],
   "tiposMov": [
     [
       "Exportación",
-      46072
+      153290
     ],
     [
       "Depósito",
-      10689
+      49232
     ],
     [
       "Recarga",
-      6223
+      19777
     ]
   ],
   "denoms": [
     [
       "CARNE BOVINA DESOSADA MADURADA",
-      23749
+      81198
     ],
     [
       "CARNE BOVINA SIN HUESO CONGELADA / FROZEN BONELESS BEEF",
-      6481
+      22049
     ],
     [
       "SUBPRODUCTOS BOVINOS COMESTIBLES CONGELADOS / FROZEN EDIBLE BEEF BY-PRODUCTS",
-      5493
+      19972
     ],
     [
       "CARNE BOVINA DESOSADA MADURADA CONGELADA",
-      2435
-    ],
-    [
-      "CARNE BOVINA DESOSADA SALADA ENFRIADA / CHILLED SALTED BONELESS BEEF",
-      2219
-    ],
-    [
-      "CARNE BOVINA CON HUESO CONGELADA / FROZEN BONE IN BEEF",
-      1985
-    ],
-    [
-      "CARNE BOVINA DESOSADA SALADA CONGELADA / FROZEN SALTED BONELESS BEEF",
-      1837
-    ],
-    [
-      "CARNE BOVINA DESOSADA",
-      1829
-    ],
-    [
-      "MENUDENCIAS BOVINAS COMESTIBLES MADURADAS",
-      1730
-    ],
-    [
-      "CARNE BOVINA DESOSADA MADURADA ENFRIADA",
-      1574
-    ],
-    [
-      "TRIPAS BOVINAS",
-      1450
+      9929
     ],
     [
       "SUBPRODUCTO BOVINO COMESTIBLE",
-      1297
+      9431
+    ],
+    [
+      "CARNE BOVINA DESOSADA",
+      9157
+    ],
+    [
+      "CARNE BOVINA CON HUESO CONGELADA / FROZEN BONE IN BEEF",
+      7532
+    ],
+    [
+      "CARNE BOVINA DESOSADA SALADA CONGELADA / FROZEN SALTED BONELESS BEEF",
+      5525
+    ],
+    [
+      "CARNE BOVINA CON HUESOS",
+      5073
+    ],
+    [
+      "CARNE BOVINA DESOSADA MADURADA ENFRIADA",
+      4840
+    ],
+    [
+      "CARNE BOVINA DESOSADA SALADA ENFRIADA / CHILLED SALTED BONELESS BEEF",
+      4658
     ],
     [
       "MENUDENCIAS BOVINAS COMESTIBLES",
-      1142
+      4552
     ],
     [
-      "CARNE BOVINA SIN HUESO MADURADA CONGELADA / FROZEN BONELESS MATURATED BEEF",
-      984
+      "TRIPAS BOVINAS",
+      4535
     ],
     [
-      "SANGRE FETAL",
-      695
+      "MENUDENCIAS BOVINAS COMESTIBLES MADURADAS",
+      3318
+    ],
+    [
+      "CARNE BOVINA DESOSADA SIN CLASIFICAR CONGELADA / FROZEN BONELESS UNGRADED BEEF",
+      2407
     ]
   ],
   "meses": {
-    "2026-01": 10270,
-    "2026-02": 11186,
-    "2026-03": 11436,
-    "2026-04": 8018,
+    "2025-01": 11258,
+    "2025-02": 12133,
+    "2025-03": 12708,
+    "2025-04": 13243,
+    "2025-05": 14350,
+    "2025-06": 13817,
+    "2025-07": 12508,
+    "2025-08": 13417,
+    "2025-09": 14348,
+    "2025-10": 12993,
+    "2025-11": 14822,
+    "2025-12": 13260,
+    "2026-01": 10425,
+    "2026-02": 11219,
+    "2026-03": 11458,
+    "2026-04": 8036,
     "2026-05": 9809,
-    "2026-06": 11356,
-    "2026-07": 653,
-    "2025-02": 1,
-    "2025-12": 255
+    "2026-06": 11363,
+    "2026-07": 1047,
+    "2021-10": 1,
+    "2024-04": 2,
+    "2024-06": 6,
+    "2024-10": 5,
+    "2024-11": 1,
+    "2024-12": 74
   }
 }
