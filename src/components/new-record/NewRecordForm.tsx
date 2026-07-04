@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -8,19 +8,18 @@ import { Plus, FileDown, CheckCircle2, RotateCcw, PackagePlus, Ship } from 'luci
 import type { Shipment, ExpRecord } from '@/lib/types';
 import { toast } from 'sonner';
 import { schedulePush } from '@/lib/googleSheets';
+import { readStorageJson, STORAGE_KEYS, writeStorageJson } from '@/lib/dataRepository';
 
 // Deposit new records key (matches ShipmentTable)
-const DEP_NEW_KEY = 'trazabilidad_dep_new_records';
+const DEP_NEW_KEY = STORAGE_KEYS.depNew;
 // Export new records key (matches ExportacionesTable)
-const EXP_NEW_KEY = 'trazabilidad_new_records';
+const EXP_NEW_KEY = STORAGE_KEYS.expNew;
 
 function loadDepRecords(): Shipment[] {
-  if (typeof window === 'undefined') return [];
-  try { return JSON.parse(localStorage.getItem(DEP_NEW_KEY) || '[]'); } catch { return []; }
+  return readStorageJson<Shipment[]>(DEP_NEW_KEY, []);
 }
 function loadExpRecords(): ExpRecord[] {
-  if (typeof window === 'undefined') return [];
-  try { return JSON.parse(localStorage.getItem(EXP_NEW_KEY) || '[]'); } catch { return []; }
+  return readStorageJson<ExpRecord[]>(EXP_NEW_KEY, []);
 }
 
 const PAISES = [
@@ -77,12 +76,10 @@ export default function NewRecordForm() {
   const [expCount, setExpCount] = useState(0);
 
   // Load counts on mount
-  useState(() => {
-    if (typeof window !== 'undefined') {
-      setDepCount(loadDepRecords().length);
-      setExpCount(loadExpRecords().length);
-    }
-  });
+  useEffect(() => {
+    setDepCount(loadDepRecords().length);
+    setExpCount(loadExpRecords().length);
+  }, []);
 
   const resetForm = () => {
     setNroTramite(''); setFechaTramite(''); setNroCote('');
@@ -122,7 +119,7 @@ export default function NewRecordForm() {
       };
       const existing = loadDepRecords();
       const updated = [record, ...existing];
-      localStorage.setItem(DEP_NEW_KEY, JSON.stringify(updated));
+      writeStorageJson(DEP_NEW_KEY, updated);
       setDepCount(updated.length);
       toast.success(`Ingreso ${nroCote} guardado — visible en A Depósitos`);
     } else {
@@ -154,7 +151,7 @@ export default function NewRecordForm() {
       };
       const existing = loadExpRecords();
       const updated = [record, ...existing];
-      localStorage.setItem(EXP_NEW_KEY, JSON.stringify(updated));
+      writeStorageJson(EXP_NEW_KEY, updated);
       setExpCount(updated.length);
       toast.success(`Exportación ${nroCote} guardada — visible en Exportaciones`);
     }
