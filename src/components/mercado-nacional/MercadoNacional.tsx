@@ -42,7 +42,7 @@ interface Analytics {
   meses: Record<string, number>;
 }
 
-type Tab = 'dashboard' | 'competencia' | 'clientes' | 'cortes' | 'insights' | 'depositos';
+type Tab = 'dashboard' | 'competencia' | 'clientes' | 'cortes' | 'insights' | 'depositos' | 'comparar';
 type TipoProductoFilter = 'todos' | 'congelado' | 'fresco';
 
 interface Insight {
@@ -374,6 +374,9 @@ export default function MercadoNacional() {
   const [topN, setTopN] = useState<5 | 10 | 20>(10);
   const [tipoProductoFilter, setTipoProductoFilter] = useState<TipoProductoFilter>('todos');
   const [dateRange, setDateRange] = useState<{ start: string; end: string }>({ start: '', end: '' });
+  // Comparar períodos
+  const [period1, setPeriod1] = useState<{ start: string; end: string; label: string }>({ start: '2026-01-01', end: '2026-03-31', label: 'Q1 2026' });
+  const [period2, setPeriod2] = useState<{ start: string; end: string; label: string }>({ start: '2026-04-01', end: '2026-06-30', label: 'Q2 2026' });
   const [depositSortKey, setDepositSortKey] = useState<'pn' | 'regs' | 'paises' | 'clientes' | 'embarques'>('pn');
   const [depositSortDir, setDepositSortDir] = useState<'asc' | 'desc'>('desc');
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -1641,6 +1644,89 @@ export default function MercadoNacional() {
   }, [records, tipoProductoFilter, selectedCompany, companyStats, competitionRanking, clientAnalysis, insights, depositosRanking, oportunidadComercial]);
 
   // ============================================================
+  // COMPARAR PERÍODOS
+  // ============================================================
+  const period1Records = useMemo(() => {
+    if (!records.length) return [];
+    return records.filter(r => {
+      if (r.f < period1.start || r.f > period1.end) return false;
+      if (tipoProductoFilter !== 'todos') {
+        const target = tipoProductoFilter === 'congelado' ? 'Congelado' : 'Fresco';
+        if (r.tpd !== target) return false;
+      }
+      return true;
+    });
+  }, [records, period1, tipoProductoFilter]);
+
+  const period2Records = useMemo(() => {
+    if (!records.length) return [];
+    return records.filter(r => {
+      if (r.f < period2.start || r.f > period2.end) return false;
+      if (tipoProductoFilter !== 'todos') {
+        const target = tipoProductoFilter === 'congelado' ? 'Congelado' : 'Fresco';
+        if (r.tpd !== target) return false;
+      }
+      return true;
+    });
+  }, [records, period2, tipoProductoFilter]);
+
+  const periodComparison = useMemo(() => {
+    const summarize = (recs: MovRecord[]) => {
+      const paises = new Set<string>(); const cortes = new Set<string>();
+      const empresas = new Set<string>(); const denoms = new Set<string>();
+      let pn = 0, cajas = 0;
+      for (const r of recs) {
+        if (r.pa) paises.add(r.pa); if (r.co) cortes.add(r.co);
+        if (r.p) empresas.add(r.p); if (r.d) denoms.add(r.d);
+        pn += r.pn || 0; cajas += r.e || 0;
+      }
+      return { registros: recs.length, pn, cajas, paises: paises.size, cortes: cortes.size, empresas: empresas.size, denoms: denoms.size };
+    };
+    const s1 = summarize(period1Records);
+    const s2 = summarize(period2Records);
+    const kpis = [
+      { metric: 'Registros', p1: s1.registros, p2: s2.registros, unit: '' },
+      { metric: 'Peso Neto', p1: s1.pn, p2: s2.pn, unit: 'kg' },
+      { metric: 'Cajas', p1: s1.cajas, p2: s2.cajas, unit: '' },
+      { metric: 'Empresas', p1: s1.empresas, p2: s2.empresas, unit: '' },
+      { metric: 'Países', p1: s1.paises, p2: s2.paises, unit: '' },
+      { metric: 'Cortes', p1: s1.cortes, p2: s2.cortes, unit: '' },
+      { metric: 'Productos', p1: s1.denoms, p2: s2.denoms, unit: '' },
+      { metric: 'Promedio kg/embarque', p1: s1.registros > 0 ? Math.round(s1.pn / s1.registros) : 0, p2: s2.registros > 0 ? Math.round(s2.pn / s2.registros) : 0, unit: 'kg' },
+    ].map(k => ({
+      ...k,
+      diff: k.p2 - k.p1,
+      diffPct: k.p1 > 0 ? ((k.p2 - k.p1) / k.p1) * 100 : 0,
+    }));
+
+    // Top empresas growth
+    const companyPn1: Record<string, number> = {};
+    const companyPn2: Record<string, number> = {};
+    for (const r of period1Records) { if (r.p) companyPn1[r.p] = (companyPn1[r.p] || 0) + (r.pn || 0); }
+    for (const r of period2Records) { if (r.p) companyPn2[r.p] = (companyPn2[r.p] || 0) + (r.pn || 0); }
+    const allCompanies = new Set([...Object.keys(companyPn1), ...Object.keys(companyPn2)]);
+    const companyGrowth = Array.from(allCompanies).map(name => ({
+      name, p1: companyPn1[name] || 0, p2: companyPn2[name] || 0,
+      diff: (companyPn2[name] || 0) - (companyPn1[name] || 0),
+      diffPct: companyPn1[name] > 0 ? (((companyPn2[name] || 0) - companyPn1[name]) / companyPn1[name]) * 100 : 0,
+    })).sort((a, b) => b.diff - a.diff);
+
+    // Top países growth
+    const countryPn1: Record<string, number> = {};
+    const countryPn2: Record<string, number> = {};
+    for (const r of period1Records) { if (r.pa) countryPn1[r.pa] = (countryPn1[r.pa] || 0) + (r.pn || 0); }
+    for (const r of period2Records) { if (r.pa) countryPn2[r.pa] = (countryPn2[r.pa] || 0) + (r.pn || 0); }
+    const allCountries = new Set([...Object.keys(countryPn1), ...Object.keys(countryPn2)]);
+    const countryGrowth = Array.from(allCountries).map(name => ({
+      name, p1: countryPn1[name] || 0, p2: countryPn2[name] || 0,
+      diff: (countryPn2[name] || 0) - (countryPn1[name] || 0),
+      diffPct: countryPn1[name] > 0 ? (((countryPn2[name] || 0) - countryPn1[name]) / countryPn1[name]) * 100 : 0,
+    })).sort((a, b) => b.diff - a.diff);
+
+    return { kpis, companyGrowth: companyGrowth.slice(0, 10), countryGrowth: countryGrowth.slice(0, 10) };
+  }, [period1Records, period2Records]);
+
+  // ============================================================
   // TABS DEFINITION
   // ============================================================
 
@@ -1650,6 +1736,7 @@ export default function MercadoNacional() {
     { id: 'clientes', label: 'Clientes', icon: Users },
     { id: 'cortes', label: 'Cortes & Destinos', icon: Package },
     { id: 'depositos', label: 'Depósitos', icon: Warehouse },
+    { id: 'comparar', label: 'Comparar Períodos', icon: GitCompare },
     { id: 'insights', label: 'Insights', icon: Lightbulb },
   ];
 
@@ -2709,6 +2796,184 @@ export default function MercadoNacional() {
               ) : (
                 <Card><CardContent className="p-4"><EmptyState message="Sin insights disponibles para depósitos" /></CardContent></Card>
               )}
+            </div>
+          )}
+
+          {/* ============ COMPARAR PERÍODOS TAB ============ */}
+          {activeTab === 'comparar' && (
+            <div className="space-y-4">
+              {/* Selectores de períodos */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Card className="border-blue-300">
+                  <CardContent className="p-4">
+                    <h3 className="text-sm font-bold text-blue-700 mb-2">📅 Período 1</h3>
+                    <div className="flex flex-wrap gap-1.5 mb-2">
+                      {[
+                        { l: 'Q1 26', s: '2026-01-01', e: '2026-03-31' },
+                        { l: 'Q2 26', s: '2026-04-01', e: '2026-06-30' },
+                        { l: '2025', s: '2025-01-01', e: '2025-12-31' },
+                        { l: '2026', s: '2026-01-01', e: '2026-12-31' },
+                      ].map(p => (
+                        <button key={p.l} onClick={() => setPeriod1({ start: p.s, end: p.e, label: p.l })}
+                          className={`text-[10px] px-2 py-1 rounded-full ${period1.start === p.s && period1.end === p.e ? 'bg-blue-600 text-white' : 'bg-blue-50 text-blue-700 hover:bg-blue-100'}`}>{p.l}</button>
+                      ))}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input type="date" value={period1.start} onChange={e => setPeriod1(prev => ({ ...prev, start: e.target.value, label: 'Personalizado' }))} className="text-xs border rounded px-2 py-1" />
+                      <span className="text-xs text-slate-400">→</span>
+                      <input type="date" value={period1.end} onChange={e => setPeriod1(prev => ({ ...prev, end: e.target.value, label: 'Personalizado' }))} className="text-xs border rounded px-2 py-1" />
+                    </div>
+                    <p className="text-[10px] text-slate-500 mt-1">{period1Records.length.toLocaleString()} registros</p>
+                  </CardContent>
+                </Card>
+                <Card className="border-emerald-300">
+                  <CardContent className="p-4">
+                    <h3 className="text-sm font-bold text-emerald-700 mb-2">📅 Período 2</h3>
+                    <div className="flex flex-wrap gap-1.5 mb-2">
+                      {[
+                        { l: 'Q1 26', s: '2026-01-01', e: '2026-03-31' },
+                        { l: 'Q2 26', s: '2026-04-01', e: '2026-06-30' },
+                        { l: '2025', s: '2025-01-01', e: '2025-12-31' },
+                        { l: '2026', s: '2026-01-01', e: '2026-12-31' },
+                      ].map(p => (
+                        <button key={p.l} onClick={() => setPeriod2({ start: p.s, end: p.e, label: p.l })}
+                          className={`text-[10px] px-2 py-1 rounded-full ${period2.start === p.s && period2.end === p.e ? 'bg-emerald-600 text-white' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'}`}>{p.l}</button>
+                      ))}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input type="date" value={period2.start} onChange={e => setPeriod2(prev => ({ ...prev, start: e.target.value, label: 'Personalizado' }))} className="text-xs border rounded px-2 py-1" />
+                      <span className="text-xs text-slate-400">→</span>
+                      <input type="date" value={period2.end} onChange={e => setPeriod2(prev => ({ ...prev, end: e.target.value, label: 'Personalizado' }))} className="text-xs border rounded px-2 py-1" />
+                    </div>
+                    <p className="text-[10px] text-slate-500 mt-1">{period2Records.length.toLocaleString()} registros</p>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* KPIs comparativos */}
+              <Card>
+                <CardContent className="p-4">
+                  <h3 className="text-sm font-bold text-slate-700 mb-3">📊 Comparación de KPIs: {period1.label} vs {period2.label}</h3>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b text-left text-xs text-slate-500 uppercase">
+                          <th className="px-3 py-2">Métrica</th>
+                          <th className="px-3 py-2 text-right text-blue-700">{period1.label}</th>
+                          <th className="px-3 py-2 text-right text-emerald-700">{period2.label}</th>
+                          <th className="px-3 py-2 text-right">Diferencia</th>
+                          <th className="px-3 py-2 text-right">% Cambio</th>
+                          <th className="px-3 py-2">Visual</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {periodComparison.kpis.map((k, i) => {
+                          const maxVal = Math.max(k.p1, k.p2) || 1;
+                          const w1 = (k.p1 / maxVal) * 100;
+                          const w2 = (k.p2 / maxVal) * 100;
+                          const isPositive = k.diff > 0;
+                          const isNegative = k.diff < 0;
+                          return (
+                            <tr key={i} className="border-b hover:bg-slate-50">
+                              <td className="px-3 py-2 text-xs font-medium text-slate-700">{k.metric}</td>
+                              <td className="px-3 py-2 text-xs text-right font-mono text-blue-700">{k.p1.toLocaleString()} {k.unit}</td>
+                              <td className="px-3 py-2 text-xs text-right font-mono text-emerald-700">{k.p2.toLocaleString()} {k.unit}</td>
+                              <td className={`px-3 py-2 text-xs text-right font-mono ${isPositive ? 'text-emerald-600' : isNegative ? 'text-red-600' : 'text-slate-400'}`}>
+                                {isPositive ? '+' : ''}{k.diff.toLocaleString()}
+                              </td>
+                              <td className={`px-3 py-2 text-xs text-right font-mono ${isPositive ? 'text-emerald-600' : isNegative ? 'text-red-600' : 'text-slate-400'}`}>
+                                {isPositive ? '▲' : isNegative ? '▼' : ''} {Math.abs(k.diffPct).toFixed(1)}%
+                              </td>
+                              <td className="px-3 py-2" style={{ minWidth: '120px' }}>
+                                <div className="flex flex-col gap-0.5">
+                                  <div className="h-2 bg-slate-100 rounded-sm overflow-hidden">
+                                    <div className="h-full bg-blue-500 rounded-sm" style={{ width: `${w1}%` }} />
+                                  </div>
+                                  <div className="h-2 bg-slate-100 rounded-sm overflow-hidden">
+                                    <div className="h-full bg-emerald-500 rounded-sm" style={{ width: `${w2}%` }} />
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Top empresas con mayor cambio */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <Card>
+                  <CardContent className="p-4">
+                    <h3 className="text-sm font-bold text-emerald-700 mb-3">📈 Empresas que más crecieron</h3>
+                    <div className="space-y-1">
+                      {periodComparison.companyGrowth.filter(c => c.diff > 0).slice(0, 8).map((c, i) => (
+                        <div key={i} className="flex items-center gap-2 text-xs">
+                          <span className="w-32 truncate text-slate-700" title={c.name}>{c.name}</span>
+                          <span className="text-blue-500 font-mono w-16 text-right">{(c.p1 / 1000).toFixed(0)}t</span>
+                          <span className="text-slate-400">→</span>
+                          <span className="text-emerald-600 font-mono w-16 text-right">{(c.p2 / 1000).toFixed(0)}t</span>
+                          <span className="text-emerald-600 font-bold w-12 text-right">+{c.diffPct.toFixed(0)}%</span>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="p-4">
+                    <h3 className="text-sm font-bold text-red-700 mb-3">📉 Empresas que más cayeron</h3>
+                    <div className="space-y-1">
+                      {periodComparison.companyGrowth.filter(c => c.diff < 0).slice(-8).reverse().map((c, i) => (
+                        <div key={i} className="flex items-center gap-2 text-xs">
+                          <span className="w-32 truncate text-slate-700" title={c.name}>{c.name}</span>
+                          <span className="text-blue-500 font-mono w-16 text-right">{(c.p1 / 1000).toFixed(0)}t</span>
+                          <span className="text-slate-400">→</span>
+                          <span className="text-emerald-600 font-mono w-16 text-right">{(c.p2 / 1000).toFixed(0)}t</span>
+                          <span className="text-red-600 font-bold w-12 text-right">{c.diffPct.toFixed(0)}%</span>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Top países con mayor cambio */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <Card>
+                  <CardContent className="p-4">
+                    <h3 className="text-sm font-bold text-emerald-700 mb-3">🌎 Países que más crecieron</h3>
+                    <div className="space-y-1">
+                      {periodComparison.countryGrowth.filter(c => c.diff > 0).slice(0, 8).map((c, i) => (
+                        <div key={i} className="flex items-center gap-2 text-xs">
+                          <span className="w-32 truncate text-slate-700" title={c.name}>{c.name}</span>
+                          <span className="text-blue-500 font-mono w-16 text-right">{(c.p1 / 1000).toFixed(0)}t</span>
+                          <span className="text-slate-400">→</span>
+                          <span className="text-emerald-600 font-mono w-16 text-right">{(c.p2 / 1000).toFixed(0)}t</span>
+                          <span className="text-emerald-600 font-bold w-12 text-right">+{c.diffPct.toFixed(0)}%</span>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="p-4">
+                    <h3 className="text-sm font-bold text-red-700 mb-3">🌎 Países que más cayeron</h3>
+                    <div className="space-y-1">
+                      {periodComparison.countryGrowth.filter(c => c.diff < 0).slice(-8).reverse().map((c, i) => (
+                        <div key={i} className="flex items-center gap-2 text-xs">
+                          <span className="w-32 truncate text-slate-700" title={c.name}>{c.name}</span>
+                          <span className="text-blue-500 font-mono w-16 text-right">{(c.p1 / 1000).toFixed(0)}t</span>
+                          <span className="text-slate-400">→</span>
+                          <span className="text-emerald-600 font-mono w-16 text-right">{(c.p2 / 1000).toFixed(0)}t</span>
+                          <span className="text-red-600 font-bold w-12 text-right">{c.diffPct.toFixed(0)}%</span>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
             </div>
           )}
 
