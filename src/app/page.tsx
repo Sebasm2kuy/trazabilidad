@@ -9,6 +9,7 @@ import ExportacionesTable from '@/components/exportaciones/ExportacionesTable';
 import CruceCaliral from '@/components/cruce-caliral/CruceCaliral';
 import CrucosXCote from '@/components/cruces-x-cote/CrucosXCote';
 import MercadoNacional from '@/components/mercado-nacional/MercadoNacional';
+import Hallazgos from '@/components/hallazgos/Hallazgos';
 import TrazabilidadExplorer from '@/components/trazabilidad-explorer/TrazabilidadExplorer';
 import TraceSearch from '@/components/traceability/TraceSearch';
 import AnalyticsCharts from '@/components/analytics/AnalyticsCharts';
@@ -35,6 +36,7 @@ export default function Home() {
       case 'cruce-caliral': return <CruceCaliral />;
       case 'cruces-x-cote': return <CrucosXCote />;
       case 'mercado-nacional': return <MercadoNacional />;
+      case 'hallazgos': return <Hallazgos />;
       case 'trazabilidad-explorer': return <TrazabilidadExplorer />;
       case 'trazabilidad': return <TraceSearch />;
       case 'comparativa': return <ProductoDestino />;

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useAppStore } from '@/store/useAppStore';
-import { LayoutDashboard, Warehouse, Ship, ArrowLeftRight, Search, GitCompare, BarChart3, Download, PlusCircle, Settings, Cloud, CloudOff, Menu, Globe } from 'lucide-react';
+import { LayoutDashboard, Warehouse, Ship, ArrowLeftRight, Search, GitCompare, BarChart3, Download, PlusCircle, Settings, Cloud, CloudOff, Menu, Globe, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { isConfigured, getLastSync } from '@/lib/googleSheets';
 import SettingsSheet from '@/components/SettingsSheet';
@@ -16,6 +16,7 @@ const tabs = [
   { id: 'cruce-caliral' as const, label: 'Cruces Frimaral', icon: ArrowLeftRight },
   { id: 'cruces-x-cote' as const, label: 'Cruces X COTE', icon: GitCompare },
   { id: 'mercado-nacional' as const, label: 'Mercado Nacional', icon: Globe },
+  { id: 'hallazgos' as const, label: 'Hallazgos', icon: Sparkles },
   { id: 'trazabilidad-explorer' as const, label: 'Trazabilidad', icon: Search },
   { id: 'trazabilidad' as const, label: 'Búsqueda', icon: Search },
   { id: 'comparativa' as const, label: 'Comparativa', icon: GitCompare },
