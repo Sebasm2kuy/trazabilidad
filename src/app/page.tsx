@@ -21,6 +21,7 @@ import { CentroInteligencia } from '@/components/centro/CentroInteligencia';
 import { CommandCenter } from '@/components/command-center/CommandCenter';
 import { OperacionCaliral } from '@/components/operacion-caliral/OperacionCaliral';
 import { ClientesEstrategicos } from '@/components/clientes-estrategicos/ClientesEstrategicos';
+import { CopilotPage } from '@/components/copilot/CopilotPage';
 import { initialPull } from '@/lib/googleSheets';
 import ErrorBoundary from '@/components/ErrorBoundary';
 
@@ -35,6 +36,7 @@ export default function Home() {
   const renderContent = () => {
     switch (activeTab) {
       case 'operacion': return <OperacionCaliral />;
+      case 'copilot': return <CopilotPage />;
       case 'centro': return <CentroInteligencia />;
       case 'command-center': return <CommandCenter />;
       case 'nirea': return <ClientesEstrategicos />;

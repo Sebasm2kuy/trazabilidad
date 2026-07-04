@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-export type Tab = 'operacion' | 'centro' | 'command-center' | 'nirea' | 'dashboard' | 'depositos' | 'exportaciones' | 'cruce-caliral' | 'cruces-x-cote' | 'mercado-nacional' | 'hallazgos' | 'trazabilidad-explorer' | 'trazabilidad' | 'comparativa' | 'analiticas' | 'importar' | 'nuevo';
+export type Tab = 'operacion' | 'copilot' | 'nirea' | 'centro' | 'command-center' | 'dashboard' | 'depositos' | 'exportaciones' | 'cruce-caliral' | 'cruces-x-cote' | 'mercado-nacional' | 'hallazgos' | 'trazabilidad-explorer' | 'trazabilidad' | 'comparativa' | 'analiticas' | 'importar' | 'nuevo';
 
 interface Filters {
   pais: string;

@@ -196,15 +196,23 @@ export function OperacionCaliral() {
         </div>
       </div>
 
-      {/* BUSCADOR — el elemento más importante */}
+      {/* BUSCADOR — elemento principal */}
       <div className="px-8 pb-6">
         <div className="max-w-3xl mx-auto">
+          <div className="text-center mb-3">
+            <h2 className="text-xl font-semibold text-slate-700 dark:text-slate-200">
+              Buscar mercadería
+            </h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+              COTE · Lote · Productor · Cliente · País · Depósito · Documento
+            </p>
+          </div>
           <UniversalSearch
-            placeholder="Buscar COTE, productor, cliente, país, depósito…"
+            placeholder="Escribí un COTE, productor, cliente o depósito…"
             autoFocus
           />
           <p className="text-center text-[11px] text-slate-400 mt-2">
-            Escribí para encontrar cualquier lote, empresa o documento al instante.
+            Al seleccionar un resultado se abre la ficha completa.
           </p>
         </div>
       </div>

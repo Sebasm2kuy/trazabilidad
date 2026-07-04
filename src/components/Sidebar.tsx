@@ -5,7 +5,7 @@ import { useAppStore } from '@/store/useAppStore';
 import {
   LayoutDashboard, Warehouse, Ship, ArrowLeftRight, Search, GitCompare, BarChart3,
   Download, PlusCircle, Settings, Cloud, CloudOff, Menu, Globe, Sparkles, Activity,
-  Radio, Home, Briefcase, Wrench, FileText, Users,
+  Radio, Home, Briefcase, Bot, FolderCog,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { isConfigured, getLastSync } from '@/lib/googleSheets';
@@ -14,7 +14,7 @@ import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { useIsMobile } from '@/hooks/use-mobile';
 
 type TabId =
-  | 'operacion' | 'command-center' | 'nirea' | 'centro'
+  | 'operacion' | 'copilot' | 'nirea' | 'centro' | 'command-center'
   | 'dashboard' | 'depositos' | 'exportaciones' | 'cruce-caliral' | 'cruces-x-cote'
   | 'mercado-nacional' | 'hallazgos' | 'trazabilidad-explorer' | 'trazabilidad'
   | 'comparativa' | 'analiticas' | 'importar' | 'nuevo';
@@ -35,9 +35,9 @@ const NAV_SECTIONS: NavSection[] = [
     title: 'Operación CALIRAL',
     items: [
       { id: 'operacion', label: 'Inicio', icon: Home },
-      { id: 'command-center', label: 'Digital Twin', icon: Radio },
       { id: 'trazabilidad-explorer', label: 'Trazabilidad', icon: Search },
       { id: 'trazabilidad', label: 'Búsqueda COTE', icon: Search },
+      { id: 'command-center', label: 'Digital Twin', icon: Radio },
     ],
   },
   {
@@ -50,7 +50,13 @@ const NAV_SECTIONS: NavSection[] = [
     ],
   },
   {
-    title: 'Administración',
+    title: 'Copilot',
+    items: [
+      { id: 'copilot', label: 'Analista Inteligente', icon: Bot },
+    ],
+  },
+  {
+    title: 'Sistema',
     items: [
       { id: 'depositos', label: 'A Depósitos', icon: Warehouse },
       { id: 'exportaciones', label: 'Exportaciones', icon: Ship },
@@ -58,11 +64,6 @@ const NAV_SECTIONS: NavSection[] = [
       { id: 'cruces-x-cote', label: 'Cruces X COTE', icon: GitCompare },
       { id: 'nuevo', label: 'Nuevo Registro', icon: PlusCircle },
       { id: 'importar', label: 'Importar / Exportar', icon: Download },
-    ],
-  },
-  {
-    title: 'Avanzado',
-    items: [
       { id: 'centro', label: 'Centro de Inteligencia', icon: Activity },
       { id: 'dashboard', label: 'Dashboard legacy', icon: LayoutDashboard },
       { id: 'analiticas', label: 'Analíticas', icon: BarChart3 },
