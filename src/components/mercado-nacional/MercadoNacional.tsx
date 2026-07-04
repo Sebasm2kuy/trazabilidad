@@ -173,7 +173,11 @@ function HBar({
   );
 }
 
-/** Vertical bar chart for monthly evolution */
+/** Vertical bar chart for monthly evolution.
+ *  Cuando `compareTo` tiene valores de magnitud muy distinta (ej: mercado
+ *  total millones de kg vs empresa cientos de miles), usa ejes duales:
+ *  cada serie se normaliza contra su propio máximo.
+ */
 function VBarChart({
   data, color = COMPANY_COLOR, compareTo,
 }: {
@@ -181,14 +185,36 @@ function VBarChart({
   color?: string;
   compareTo?: { label: string; value: number }[];
 }) {
-  const max = Math.max(...data.map(d => d.value), ...(compareTo?.map(d => d.value) || [0]), 1);
+  const dataMax = Math.max(...data.map(d => d.value), 1);
+  const compMax = compareTo && compareTo.length > 0
+    ? Math.max(...compareTo.map(d => d.value), 1)
+    : 1;
+  // Si la relación entre máximos es > 5x, usamos escala dual.
+  const dualAxis = Boolean(compareTo) && (compMax / dataMax > 5 || dataMax / compMax > 5);
+  // En modo dual, cada barra se normaliza contra su propio máximo.
+  // En modo simple, se usa el máximo global.
+  const globalMax = Math.max(dataMax, compMax, 1);
+
   return (
     <div className="space-y-2">
+      {dualAxis && (
+        <div className="flex justify-between text-[10px] text-slate-500 px-1">
+          <span className="flex items-center gap-1">
+            <span className="w-2 h-2 rounded" style={{ backgroundColor: color }} />
+            Empresa — máx {fmt(dataMax)}
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="w-2 h-2 rounded bg-slate-300" />
+            Mercado — máx {fmt(compMax)}
+          </span>
+        </div>
+      )}
       <div className="flex items-end gap-1.5 sm:gap-2 h-40 sm:h-52">
         {data.map((d, i) => {
-          const h = (d.value / max) * 100;
           const compVal = compareTo?.[i]?.value || 0;
-          const compH = (compVal / max) * 100;
+          // En modo dual cada uno usa su propio max. En simple, globalMax.
+          const h = dualAxis ? (d.value / dataMax) * 100 : (d.value / globalMax) * 100;
+          const compH = dualAxis ? (compVal / compMax) * 100 : (compVal / globalMax) * 100;
           return (
             <div key={i} className="flex-1 flex flex-col items-center gap-1 group min-w-0">
               <span className="text-[9px] font-mono text-slate-600 dark:text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
@@ -199,13 +225,13 @@ function VBarChart({
                   <div
                     className="w-1.5 sm:w-2 rounded-t transition-all duration-500"
                     style={{ height: `${Math.max(compH, compVal > 0 ? 2 : 0)}%`, backgroundColor: '#cbd5e1' }}
-                    title={`Mercado total: ${fmt(compVal)}`}
+                    title={`Mercado total: ${fmt(compVal)}${dualAxis ? ` (máx: ${fmt(compMax)})` : ''}`}
                   />
                 )}
                 <div
                   className="w-3 sm:w-4 rounded-t transition-all duration-500 hover:opacity-80"
                   style={{ height: `${Math.max(h, d.value > 0 ? 2 : 0)}%`, backgroundColor: color }}
-                  title={`${d.label}: ${fmt(d.value)}`}
+                  title={`${d.label}: ${fmt(d.value)}${dualAxis ? ` (máx empresa: ${fmt(dataMax)})` : ''}`}
                 />
               </div>
               <span className="text-[9px] text-slate-500 truncate w-full text-center">{d.label}</span>
