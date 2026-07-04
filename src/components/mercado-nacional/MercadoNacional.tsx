@@ -11,7 +11,7 @@ import {
   Download, Loader2, BarChart3, Users, Award, Target, Lightbulb,
   Crown, AlertCircle, CheckCircle2, ArrowUpRight, ArrowDownRight,
   Building2, PieChart as PieIcon, Layers, Sparkles,
-  Warehouse, Boxes, Network, MessageSquare, Send, Upload,
+  Warehouse, Boxes, Network, MessageSquare, Send, Upload, GitCompare,
 } from 'lucide-react';
 import { dataUrl } from '@/lib/staticData';
 import { fmt } from '@/lib/utils';
