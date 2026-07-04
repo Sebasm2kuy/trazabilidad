@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useState, useMemo, useCallback } from 'react';
+import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -10,7 +11,7 @@ import {
   Download, Loader2, BarChart3, Users, Award, Target, Lightbulb,
   Crown, AlertCircle, CheckCircle2, ArrowUpRight, ArrowDownRight,
   Building2, PieChart as PieIcon, Layers, Sparkles,
-  Warehouse, Boxes, Network,
+  Warehouse, Boxes, Network, MessageSquare, Send, Upload,
 } from 'lucide-react';
 import { dataUrl } from '@/lib/staticData';
 import { fmt } from '@/lib/utils';
@@ -56,6 +57,7 @@ interface Insight {
 // ============================================================
 
 const DEFAULT_COMPANY = 'Caliral S. A.';
+const COMPANY_DISPLAY_NAME = 'Calirar (Frimaral)';
 
 /** Tailwind-friendly hex palette (emerald, blue, amber, violet, rose, cyan, orange) */
 const PALETTE_HEX = [
@@ -103,6 +105,22 @@ function hexToRgba(hex: string, alpha: number): string {
   const g = parseInt(hex.slice(3, 5), 16);
   const b = parseInt(hex.slice(5, 7), 16);
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+
+function isCaliralName(name: string): boolean {
+  const normalized = name.toLowerCase();
+  return normalized.includes('caliral') || normalized.includes('calirar') || normalized.includes('frimaral');
+}
+
+function displayCompanyName(name: string): string {
+  return isCaliralName(name) ? COMPANY_DISPLAY_NAME : name;
+}
+
+function getEntityRole(name: string, productores: Set<string>): 'mi_empresa' | 'productor' | 'deposito_competencia' | 'competencia' {
+  if (isCaliralName(name)) return 'mi_empresa';
+  if (productores.has(name)) return 'productor';
+  return 'deposito_competencia';
 }
 
 function sortEntries(obj: Record<string, number>): [string, number][] {
@@ -357,6 +375,11 @@ export default function MercadoNacional() {
   const [tipoProductoFilter, setTipoProductoFilter] = useState<TipoProductoFilter>('todos');
   const [depositSortKey, setDepositSortKey] = useState<'pn' | 'regs' | 'paises' | 'clientes' | 'embarques'>('pn');
   const [depositSortDir, setDepositSortDir] = useState<'asc' | 'desc'>('desc');
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [importingExcel, setImportingExcel] = useState(false);
+  const [assistantQuestion, setAssistantQuestion] = useState('');
+  const [assistantAnswer, setAssistantAnswer] = useState('');
+  const [assistantLoading, setAssistantLoading] = useState(false);
 
   // --- Load analytics (fast) + records (heavy) on mount ---
   useEffect(() => {
@@ -1199,6 +1222,161 @@ export default function MercadoNacional() {
     return out;
   }, [depositRecords, depositosRanking, productoresNoCaliralRaw, multiDepositoCaliral, caliralNoMercados]);
 
+
+  // ============================================================
+  // MERCADO ASSISTANT + EXCEL IMPORT
+  // ============================================================
+
+  const entityRoleSummary = useMemo(() => {
+    const productores = new Set<string>();
+    const depositos = new Set<string>();
+    const competencia = new Set<string>();
+    for (const r of filteredRecords) {
+      if (r.p && PRODUCTORES_SET.has(r.p)) productores.add(r.p);
+      if (r.cf) {
+        const role = getEntityRole(r.cf, PRODUCTORES_SET);
+        if (role === 'mi_empresa') continue;
+        if (role === 'productor') competencia.add(r.cf);
+        if (role === 'deposito_competencia') depositos.add(r.cf);
+      }
+    }
+    return { productores: productores.size, depositos: depositos.size, competencia: competencia.size };
+  }, [filteredRecords, PRODUCTORES_SET]);
+
+  const mercadoAssistantContext = useMemo(() => {
+    const topCompetidor = competitionRanking.find(r => !isCaliralName(r.name));
+    const topDeposito = depositosRanking.find(r => !isCaliralName(r.name));
+    const topProductorSinCaliral = productoresNoCaliralRaw[0];
+    const topOportunidad = oportunidadComercial[0];
+    const topCaliralProductor = caliralDepositoStats.productoresRanking[0];
+    return [
+      `Empresa propia: ${COMPANY_DISPLAY_NAME}. En la base puede figurar como ${DEFAULT_COMPANY}; cualquier Caliral/Calirar/Frimaral se interpreta como empresa propia.`,
+      `Regla de clasificación: productores = lista PRODUCTORES_SET; depósitos = certificadores que NO están en PRODUCTORES_SET; competencia = todo certificador/productor que no sea ${COMPANY_DISPLAY_NAME}.`,
+      `Filtro actual: ${tipoProductoFilter}. Registros filtrados: ${fmt(filteredRecords.length)}. Peso mercado: ${fmtKg(totalMarketPn)}.`,
+      `${COMPANY_DISPLAY_NAME} como certificador/deposito: ${fmtKg(companyStats.totalPn)}, ${fmtPct(companyStats.marketShare)} del mercado general; como depósito: ${fmtKg(caliralDepositoStats.totalPn)}, ${fmtPct(caliralDepositoStats.share)} del mercado de depósitos.`,
+      `Entidades detectadas: ${entityRoleSummary.productores} productores, ${entityRoleSummary.depositos} depósitos/competidores logísticos y ${entityRoleSummary.competencia} productores competidores.`,
+      topCompetidor ? `Principal competidor general: ${topCompetidor.name} (${fmtKg(topCompetidor.pn)}, ${fmtPct(topCompetidor.share)}).` : '',
+      topDeposito ? `Principal depósito competidor: ${topDeposito.name} (${fmtKg(topDeposito.pn)}, ${fmtPct(topDeposito.share)} del mercado depósitos).` : '',
+      topCaliralProductor ? `Principal productor que usa ${COMPANY_DISPLAY_NAME}: ${topCaliralProductor.name} (${fmtKg(topCaliralProductor.pn)}).` : '',
+      topProductorSinCaliral ? `Mayor productor que NO usa ${COMPANY_DISPLAY_NAME}: ${topProductorSinCaliral.name}; usa ${topProductorSinCaliral.mainDeposito}; volumen ${fmtKg(topProductorSinCaliral.pn)}.` : '',
+      topOportunidad ? `Mejor oportunidad comercial: ${topOportunidad.name}; depósito actual ${topOportunidad.deposito}; score ${topOportunidad.score.toFixed(1)}; potencial ${topOportunidad.potencial}.` : '',
+      `Países que ${COMPANY_DISPLAY_NAME} no atiende como depósito: ${caliralNoMercados.paisesOportunidad.slice(0, 5).map(p => `${p.name} ${fmtKg(p.pn)}`).join(', ') || 'sin brechas detectadas'}.`,
+      `Cortes que ${COMPANY_DISPLAY_NAME} no procesa como depósito: ${caliralNoMercados.cortesOportunidad.slice(0, 5).map(c => `${c.name} ${fmtKg(c.pn)}`).join(', ') || 'sin brechas detectadas'}.`,
+    ].filter(Boolean).join('\n');
+  }, [competitionRanking, depositosRanking, productoresNoCaliralRaw, oportunidadComercial, caliralDepositoStats, companyStats, tipoProductoFilter, filteredRecords, totalMarketPn, entityRoleSummary, caliralNoMercados]);
+
+  const answerMercadoQuestion = useCallback((question: string): string => {
+    const q = question.toLowerCase();
+    if (!question.trim()) return 'Escribí una pregunta sobre mercado nacional, depósitos, productores, competencia, cortes, países u oportunidades.';
+
+    if (q.includes('regla') || q.includes('diferenci') || q.includes('deposit') || q.includes('productor')) {
+      return `Regla usada: ${COMPANY_DISPLAY_NAME} es tu empresa. Los productores salen de una lista cerrada de plantas/productores conocidos. Todo certificador que NO está en esa lista se clasifica como depósito; si además no es ${COMPANY_DISPLAY_NAME}, es competencia logística/de depósito. Por eso no todo lo que aparece como certificador es productor.`;
+    }
+    if (q.includes('compet')) {
+      const rows = competitionRanking.filter(r => !isCaliralName(r.name)).slice(0, 5);
+      return `Top competencia general por peso neto:\n${rows.map((r, i) => `${i + 1}. ${r.name}: ${fmtKg(r.pn)} (${fmtPct(r.share)})`).join('\n')}`;
+    }
+    if (q.includes('oportun')) {
+      return `Principales oportunidades para ${COMPANY_DISPLAY_NAME}:\n${oportunidadComercial.slice(0, 5).map((r, i) => `${i + 1}. ${r.name}: score ${r.score.toFixed(1)} (${r.potencial}), hoy usa ${r.deposito}, volumen ${fmtKg(r.pn)}`).join('\n') || 'No hay oportunidades detectadas con el filtro actual.'}`;
+    }
+    if (q.includes('pais') || q.includes('país') || q.includes('mercado')) {
+      return `Países/destinos que ${COMPANY_DISPLAY_NAME} no atiende como depósito y otros sí:\n${caliralNoMercados.paisesOportunidad.slice(0, 8).map((p, i) => `${i + 1}. ${p.name}: ${fmtKg(p.pn)}`).join('\n') || 'No hay brechas de países con el filtro actual.'}`;
+    }
+    if (q.includes('corte') || q.includes('producto')) {
+      return `Cortes que ${COMPANY_DISPLAY_NAME} no procesa como depósito y otros sí:\n${caliralNoMercados.cortesOportunidad.slice(0, 8).map((c, i) => `${i + 1}. ${c.name}: ${fmtKg(c.pn)}`).join('\n') || 'No hay brechas de cortes con el filtro actual.'}`;
+    }
+    if (q.includes('calirar') || q.includes('caliral') || q.includes('frimaral')) {
+      return `${COMPANY_DISPLAY_NAME}: ${fmtKg(caliralDepositoStats.totalPn)} como depósito, ${fmt(caliralDepositoStats.embarques)} embarques, ${caliralDepositoStats.productoresCount} productores y ${fmtPct(caliralDepositoStats.share)} del mercado de depósitos. Principal productor: ${caliralDepositoStats.productoresRanking[0]?.name || 'sin datos'}.`;
+    }
+
+    return `${mercadoAssistantContext}\n\nSi querés, preguntame por: “top competencia”, “oportunidades”, “productores que no usan Calirar”, “países que no atiendo”, “cortes que no proceso” o “regla depósitos vs productores”.`;
+  }, [competitionRanking, oportunidadComercial, caliralNoMercados, caliralDepositoStats, mercadoAssistantContext]);
+
+  const handleAssistantAsk = useCallback(async (preset?: string) => {
+    const question = (preset || assistantQuestion).trim();
+    if (!question) return;
+    setAssistantLoading(true);
+    try {
+      const localAnswer = answerMercadoQuestion(question);
+      const puter = (window as unknown as { puter?: { ai?: { chat?: (messages: unknown, options?: unknown) => Promise<unknown> } } }).puter;
+      if (puter?.ai?.chat) {
+        const response = await Promise.race([
+          puter.ai.chat([
+            { role: 'system', content: `Sos asistente experto de Mercado Nacional para ${COMPANY_DISPLAY_NAME}. Respondé en español, con números concretos, y recordá que Calirar/Frimaral/Caliral es la empresa propia; lo demás es competencia. No confundas productores con depósitos: ${mercadoAssistantContext}` },
+            { role: 'user', content: question },
+          ], { model: 'gpt-5.4-nano' }),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 9000)),
+        ]);
+        setAssistantAnswer(String(response || localAnswer));
+      } else {
+        setAssistantAnswer(localAnswer);
+      }
+    } catch {
+      setAssistantAnswer(answerMercadoQuestion(question));
+    } finally {
+      setAssistantLoading(false);
+    }
+  }, [assistantQuestion, answerMercadoQuestion, mercadoAssistantContext]);
+
+  function mapExcelRow(row: Record<string, unknown>, idx: number): MovRecord | null {
+    const pick = (...keys: string[]) => keys.map(k => row[k]).find(v => v !== undefined && v !== null && String(v).trim() !== '');
+    const cf = String(pick('Certificador', 'Establecimiento Certificador', 'Nombre del Establecimiento Certificador', 'cf') || '').trim();
+    const p = String(pick('Productor', 'Nombre Establecimiento Productor', 'Establecimiento Productor', 'p') || '').trim();
+    const cote = String(pick('COTE', 'Nro. de C.O.T.E.', 'Nro COTE', 'c') || '').trim();
+    const tramite = String(pick('Nro. Trámite', 'Trámite', 't') || '').trim();
+    if (!cf && !p && !cote && !tramite) return null;
+    const fechaRaw = pick('Fecha', 'Fecha del Trámite', 'f');
+    const fecha = fechaRaw ? new Date(String(fechaRaw)).toISOString() : new Date().toISOString();
+    return {
+      t: tramite || `imp-${Date.now()}-${idx}`,
+      f: fecha,
+      c: cote,
+      cf,
+      p,
+      np: String(pick('Nro. Establecimiento Productor', 'np') || ''),
+      ed: String(pick('Destino', 'Nombre Establecimiento Destino', 'ed') || ''),
+      tm: String(pick('Tipo de Movimiento', 'Movimiento', 'tm') || ''),
+      pa: String(pick('País', 'Pais', 'País de Destino', 'pa') || ''),
+      d: String(pick('Denominación de Mercadería', 'Producto', 'd') || ''),
+      co: String(pick('Corte', 'co') || ''),
+      pa2: Number(pick('Pallets', 'pa2') || 0) || 0,
+      e: Number(pick('Cantidad de Envases', 'Envases', 'e') || 0) || 0,
+      pb: Number(pick('Peso Bruto', 'pb') || 0) || 0,
+      pn: Number(pick('Peso Neto', 'pn') || 0) || 0,
+      tt: String(pick('Tipo de Transporte', 'Transporte', 'tt') || ''),
+      sh: String(pick('Shipping', 'sh') || ''),
+      tpd: String(pick('Tipo Producto', 'tpd') || '').includes('Fresco') ? 'Fresco' : String(pick('Tipo Producto', 'tpd') || '').includes('Congelado') ? 'Congelado' : undefined,
+      isd: Boolean(cf && p && cf !== p && !PRODUCTORES_SET.has(cf)),
+      dep: cf && !PRODUCTORES_SET.has(cf) ? cf : undefined,
+    };
+  }
+
+  const handleExcelUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImportingExcel(true);
+    try {
+      const XLSX = await import('xlsx');
+      const ab = await file.arrayBuffer();
+      const wb = XLSX.read(ab, { type: 'array', cellDates: true });
+      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(wb.Sheets[wb.SheetNames[0]], { defval: '' });
+      const mapped = rows.map(mapExcelRow).filter((r): r is MovRecord => Boolean(r));
+      if (!mapped.length) {
+        toast.error('No pude reconocer registros en el Excel. Revisá encabezados como Certificador, Productor, COTE, Fecha, País, Corte, Peso Neto.');
+        return;
+      }
+      setRecords(mapped);
+      setSelectedCompany(DEFAULT_COMPANY);
+      toast.success(`Excel cargado: ${fmt(mapped.length)} registros. Ya podés preguntarle al asistente.`);
+    } catch (err) {
+      console.error('Mercado import error:', err);
+      toast.error('Error al leer el Excel de Mercado Nacional');
+    } finally {
+      setImportingExcel(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  }, [PRODUCTORES_SET]);
+
   // ============================================================
   // EXPORT TO EXCEL
   // ============================================================
@@ -1368,6 +1546,16 @@ export default function MercadoNacional() {
                   ))}
                 </select>
               </div>
+              <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleExcelUpload} />
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={importingExcel}
+                className="shrink-0"
+              >
+                {importingExcel ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <Upload className="w-4 h-4 mr-1.5" />} Cargar Excel
+              </Button>
               <Button
                 variant="outline"
                 size="sm"
@@ -1414,6 +1602,47 @@ export default function MercadoNacional() {
               {fmt(filteredRecords.length)} registros · {fmtKg(totalMarketPn)}
             </Badge>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* ===== ASISTENTE MERCADO ===== */}
+      <Card className="border-violet-200 dark:border-violet-900/40 bg-violet-50/40 dark:bg-violet-900/10">
+        <CardContent className="p-4 space-y-3">
+          <div className="flex items-start gap-3">
+            <div className="w-9 h-9 rounded-lg bg-violet-100 dark:bg-violet-900/40 flex items-center justify-center shrink-0">
+              <MessageSquare className="w-4 h-4 text-violet-600" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">Asistente de Mercado Nacional</h3>
+              <p className="text-[11px] text-slate-500 leading-relaxed">
+                Entiende que <strong>{COMPANY_DISPLAY_NAME}</strong> es tu empresa; todo lo demás es competencia. Diferencia productores vs depósitos con la regla de productores conocidos: si un certificador no está en esa lista, se analiza como depósito.
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {['¿Cuál es la regla depósitos vs productores?', 'Top competencia', 'Oportunidades para Calirar', 'Productores que no usan Calirar', 'Países que no atiendo', 'Cortes que no proceso'].map(q => (
+              <button key={q} onClick={() => handleAssistantAsk(q)} className="text-[10px] px-2 py-1 rounded-full bg-white dark:bg-slate-900 border border-violet-200 dark:border-violet-800 text-violet-700 dark:text-violet-300 hover:bg-violet-100 dark:hover:bg-violet-900/40">
+                {q}
+              </button>
+            ))}
+          </div>
+          <div className="flex gap-2">
+            <Input
+              value={assistantQuestion}
+              onChange={e => setAssistantQuestion(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') handleAssistantAsk(); }}
+              placeholder="Preguntá por competencia, productores, depósitos, países, cortes u oportunidades…"
+              className="text-sm"
+            />
+            <Button onClick={() => handleAssistantAsk()} disabled={assistantLoading || !assistantQuestion.trim()} className="bg-violet-600 hover:bg-violet-700">
+              {assistantLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+            </Button>
+          </div>
+          {assistantAnswer && (
+            <div className="rounded-lg border border-violet-200 dark:border-violet-800 bg-white/80 dark:bg-slate-950/60 p-3 whitespace-pre-wrap text-xs leading-relaxed text-slate-700 dark:text-slate-300">
+              {assistantAnswer}
+            </div>
+          )}
         </CardContent>
       </Card>
 
