@@ -228,7 +228,7 @@ export function getConcentration(records: MovRecord[], field: keyof MovRecord = 
       topDestinoPn,
       topDestinoName,
       concentration,
-      risk: concentration > 60 ? 'alto' : concentration > 40 ? 'medio' : 'bajo',
+      risk: (concentration > 60 ? 'alto' : concentration > 40 ? 'medio' : 'bajo') as 'alto' | 'medio' | 'bajo',
     };
   }).sort((a, b) => b.concentration - a.concentration);
 }
