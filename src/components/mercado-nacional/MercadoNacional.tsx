@@ -503,7 +503,15 @@ export default function MercadoNacional() {
 
   const companyRecords = useMemo<MovRecord[]>(() => {
     if (!filteredRecords.length) return [];
-    // Prefer cf (certifier) match; fallback to p (productor) if no cf records
+    // For Caliral (default): match by cf (certificador) OR dep (deposito) OR ed (destino)
+    if (selectedCompany === DEFAULT_COMPANY) {
+      return filteredRecords.filter(r =>
+        r.cf === selectedCompany ||
+        r.dep === selectedCompany ||
+        (r.ed && r.ed === selectedCompany)
+      );
+    }
+    // Other companies: prefer cf match, fallback to p
     const byCf = filteredRecords.filter(r => r.cf === selectedCompany);
     if (byCf.length > 0) return byCf;
     return filteredRecords.filter(r => r.p === selectedCompany);
@@ -2925,7 +2933,7 @@ export default function MercadoNacional() {
                   <CardContent className="p-4">
                     <h3 className="text-sm font-bold text-red-700 mb-3">📉 Empresas que más cayeron</h3>
                     <div className="space-y-1">
-                      {periodComparison.companyGrowth.filter(c => c.diff < 0).slice(-8).reverse().map((c, i) => (
+                      {[...periodComparison.companyGrowth].filter(c => c.diff < 0).sort((a, b) => a.diffPct - b.diffPct).slice(0, 8).map((c, i) => (
                         <div key={i} className="flex items-center gap-2 text-xs">
                           <span className="w-32 truncate text-slate-700" title={c.name}>{c.name}</span>
                           <span className="text-blue-500 font-mono w-16 text-right">{(c.p1 / 1000).toFixed(0)}t</span>
@@ -2961,7 +2969,7 @@ export default function MercadoNacional() {
                   <CardContent className="p-4">
                     <h3 className="text-sm font-bold text-red-700 mb-3">🌎 Países que más cayeron</h3>
                     <div className="space-y-1">
-                      {periodComparison.countryGrowth.filter(c => c.diff < 0).slice(-8).reverse().map((c, i) => (
+                      {[...periodComparison.countryGrowth].filter(c => c.diff < 0).sort((a, b) => a.diffPct - b.diffPct).slice(0, 8).map((c, i) => (
                         <div key={i} className="flex items-center gap-2 text-xs">
                           <span className="w-32 truncate text-slate-700" title={c.name}>{c.name}</span>
                           <span className="text-blue-500 font-mono w-16 text-right">{(c.p1 / 1000).toFixed(0)}t</span>
@@ -3020,6 +3028,93 @@ export default function MercadoNacional() {
                   );
                 })}
               </div>
+
+              {/* Análisis estratégico de Caliral */}
+              {selectedCompany === DEFAULT_COMPANY && (
+                <Card className="border-violet-300 bg-gradient-to-br from-violet-50 to-slate-50 dark:from-violet-900/20 dark:to-slate-900">
+                  <CardContent className="p-5 space-y-4">
+                    <div className="flex items-center gap-2">
+                      <Target className="h-5 w-5 text-violet-600" />
+                      <h3 className="text-sm font-bold text-violet-800 dark:text-violet-300">Análisis Estratégico: Posicionamiento de Caliral</h3>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      <div className="bg-white dark:bg-slate-800 rounded-lg p-3 border">
+                        <p className="text-[10px] uppercase font-semibold text-slate-500">Share como Certificadora</p>
+                        <p className="text-xl font-bold text-violet-700 mt-1">{fmtPct(companyStats.share)}</p>
+                        <p className="text-[10px] text-slate-400">{fmtKg(companyStats.totalPn)} kg</p>
+                      </div>
+                      <div className="bg-white dark:bg-slate-800 rounded-lg p-3 border">
+                        <p className="text-[10px] uppercase font-semibold text-slate-500">Share como Depósito</p>
+                        <p className="text-xl font-bold text-emerald-700 mt-1">{fmtPct(caliralDepositoStats.share)}</p>
+                        <p className="text-[10px] text-slate-400">{fmtKg(caliralDepositoStats.totalPn)} kg</p>
+                      </div>
+                      <div className="bg-white dark:bg-slate-800 rounded-lg p-3 border">
+                        <p className="text-[10px] uppercase font-semibold text-slate-500">Productores Captados</p>
+                        <p className="text-xl font-bold text-blue-700 mt-1">{caliralDepositoStats.productoresCount}</p>
+                        <p className="text-[10px] text-slate-400">de {competitionRanking.length} totales</p>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <p className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase">Indicadores Estratégicos</p>
+                      {(() => {
+                        const ind: { l: string; v: string; c: string; d: string }[] = [];
+                        ind.push({ l: 'Share como certificadora', v: fmtPct(companyStats.share), c: companyStats.share > 1 ? 'text-emerald-600' : 'text-amber-600', d: companyStats.share > 1 ? 'Posición sólida' : 'Oportunidad de crecimiento' });
+                        ind.push({ l: 'Share como depósito', v: fmtPct(caliralDepositoStats.share), c: caliralDepositoStats.share > 5 ? 'text-emerald-600' : 'text-amber-600', d: caliralDepositoStats.share > 5 ? 'Depósito relevante' : 'Espacio para captar más' });
+                        const capt = (caliralDepositoStats.productoresCount / (competitionRanking.length || 1)) * 100;
+                        ind.push({ l: 'Captación de productores', v: `${capt.toFixed(1)}%`, c: capt > 15 ? 'text-emerald-600' : 'text-red-600', d: `${caliralDepositoStats.productoresCount} de ${competitionRanking.length}` });
+                        ind.push({ l: 'Diversificación geográfica', v: `${companyStats.paises} países`, c: companyStats.paises > 5 ? 'text-emerald-600' : 'text-amber-600', d: companyStats.paises > 5 ? 'Bien diversificado' : 'Concentrado' });
+                        ind.push({ l: 'Diversificación de cortes', v: `${companyStats.cortes} cortes`, c: companyStats.cortes > 10 ? 'text-emerald-600' : 'text-amber-600', d: companyStats.cortes > 10 ? 'Amplio portafolio' : 'Limitado' });
+                        const pp = companyStats.totalPn / (companyStats.total || 1);
+                        ind.push({ l: 'Peso prom. por embarque', v: `${(pp / 1000).toFixed(1)} ton`, c: 'text-blue-600', d: 'Kg por envío certificado' });
+                        return ind.map((x, i) => (
+                          <div key={i} className="flex items-center gap-3 bg-white dark:bg-slate-800 rounded-lg p-2 border">
+                            <span className="text-xs font-medium text-slate-600 dark:text-slate-300 w-44 truncate">{x.l}</span>
+                            <span className={`text-sm font-bold ${x.c} w-20 text-right`}>{x.v}</span>
+                            <span className="text-[10px] text-slate-500 flex-1">{x.d}</span>
+                          </div>
+                        ));
+                      })()}
+                    </div>
+                    <div className="space-y-2">
+                      <p className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase">Oportunidades Comerciales</p>
+                      {(() => {
+                        const ops: string[] = [];
+                        if (productoresNoCaliralRaw.length > 0) ops.push(`💡 ${productoresNoCaliralRaw.length} productores no usan Caliral. Top: ${productoresNoCaliralRaw.slice(0, 3).map(p => p.name).join(', ')}.`);
+                        const allP = new Set(filteredRecords.map(r => r.pa).filter(Boolean));
+                        const cP = new Set(companyRecords.map(r => r.pa).filter(Boolean));
+                        const noP = [...allP].filter(p => !cP.has(p) && p).slice(0, 5);
+                        if (noP.length > 0) ops.push(`🌎 Caliral no certifica envíos a ${noP.length} países: ${noP.join(', ')}.`);
+                        if (depositosRanking.length > 1) ops.push(`🏗️ Depósito líder: ${depositosRanking[0].name} (${fmtPct(depositosRanking[0].share)}). Caliral: ${fmtPct(caliralDepositoStats.share)}.`);
+                        if (companyStats.share < 1) ops.push(`📈 Share como certificadora (${fmtPct(companyStats.share)}) < 1%. Espacio para crecer.`);
+                        return ops.map((o, i) => (
+                          <div key={i} className="bg-violet-50 dark:bg-violet-900/20 rounded-lg p-3 border border-violet-200 dark:border-violet-800">
+                            <p className="text-xs text-slate-700 dark:text-slate-300">{o}</p>
+                          </div>
+                        ));
+                      })()}
+                    </div>
+                    <div className="space-y-2">
+                      <p className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase">Sugerencias de Mejora</p>
+                      {(() => {
+                        const sug: { i: string; t: string; p: string }[] = [];
+                        if (caliralDepositoStats.productoresCount < 10) sug.push({ i: '🎯', t: `Captar más productores: solo ${caliralDepositoStats.productoresCount} usan Caliral.`, p: 'alta' });
+                        if (companyStats.paises < 10) sug.push({ i: '🌍', t: `Diversificar destinos: solo ${companyStats.paises} países.`, p: 'media' });
+                        if (caliralDepositoStats.share < 5) sug.push({ i: '📈', t: `Aumentar share como depósito: ${fmtPct(caliralDepositoStats.share)}.`, p: 'alta' });
+                        sug.push({ i: '📊', t: 'Benchmarking mensual vs top 3 depósitos competidores.', p: 'baja' });
+                        return sug.map((s, i) => (
+                          <div key={i} className="flex items-start gap-2 bg-white dark:bg-slate-800 rounded-lg p-2 border">
+                            <span className="text-lg">{s.i}</span>
+                            <div className="flex-1">
+                              <p className="text-xs text-slate-700 dark:text-slate-300">{s.t}</p>
+                              <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${s.p === 'alta' ? 'bg-red-100 text-red-700' : s.p === 'media' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'}`}>{s.p}</span>
+                            </div>
+                          </div>
+                        ));
+                      })()}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
             </div>
           )}
         </>
