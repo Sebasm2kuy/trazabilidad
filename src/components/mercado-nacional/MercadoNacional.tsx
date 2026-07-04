@@ -3040,7 +3040,7 @@ export default function MercadoNacional() {
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                       <div className="bg-white dark:bg-slate-800 rounded-lg p-3 border">
                         <p className="text-[10px] uppercase font-semibold text-slate-500">Share como Certificadora</p>
-                        <p className="text-xl font-bold text-violet-700 mt-1">{fmtPct(companyStats.share)}</p>
+                        <p className="text-xl font-bold text-violet-700 mt-1">{fmtPct(companyStats.marketShare)}</p>
                         <p className="text-[10px] text-slate-400">{fmtKg(companyStats.totalPn)} kg</p>
                       </div>
                       <div className="bg-white dark:bg-slate-800 rounded-lg p-3 border">
@@ -3058,12 +3058,12 @@ export default function MercadoNacional() {
                       <p className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase">Indicadores Estratégicos</p>
                       {(() => {
                         const ind: { l: string; v: string; c: string; d: string }[] = [];
-                        ind.push({ l: 'Share como certificadora', v: fmtPct(companyStats.share), c: companyStats.share > 1 ? 'text-emerald-600' : 'text-amber-600', d: companyStats.share > 1 ? 'Posición sólida' : 'Oportunidad de crecimiento' });
+                        ind.push({ l: 'Share como certificadora', v: fmtPct(companyStats.marketShare), c: companyStats.marketShare > 1 ? 'text-emerald-600' : 'text-amber-600', d: companyStats.marketShare > 1 ? 'Posición sólida' : 'Oportunidad de crecimiento' });
                         ind.push({ l: 'Share como depósito', v: fmtPct(caliralDepositoStats.share), c: caliralDepositoStats.share > 5 ? 'text-emerald-600' : 'text-amber-600', d: caliralDepositoStats.share > 5 ? 'Depósito relevante' : 'Espacio para captar más' });
                         const capt = (caliralDepositoStats.productoresCount / (competitionRanking.length || 1)) * 100;
                         ind.push({ l: 'Captación de productores', v: `${capt.toFixed(1)}%`, c: capt > 15 ? 'text-emerald-600' : 'text-red-600', d: `${caliralDepositoStats.productoresCount} de ${competitionRanking.length}` });
-                        ind.push({ l: 'Diversificación geográfica', v: `${companyStats.paises} países`, c: companyStats.paises > 5 ? 'text-emerald-600' : 'text-amber-600', d: companyStats.paises > 5 ? 'Bien diversificado' : 'Concentrado' });
-                        ind.push({ l: 'Diversificación de cortes', v: `${companyStats.cortes} cortes`, c: companyStats.cortes > 10 ? 'text-emerald-600' : 'text-amber-600', d: companyStats.cortes > 10 ? 'Amplio portafolio' : 'Limitado' });
+                        ind.push({ l: 'Diversificación geográfica', v: `${companyStats.uniquePaises} países`, c: companyStats.uniquePaises > 5 ? 'text-emerald-600' : 'text-amber-600', d: companyStats.uniquePaises > 5 ? 'Bien diversificado' : 'Concentrado' });
+                        ind.push({ l: 'Diversificación de cortes', v: `${companyStats.uniqueCortes} cortes`, c: companyStats.uniqueCortes > 10 ? 'text-emerald-600' : 'text-amber-600', d: companyStats.uniqueCortes > 10 ? 'Amplio portafolio' : 'Limitado' });
                         const pp = companyStats.totalPn / (companyStats.total || 1);
                         ind.push({ l: 'Peso prom. por embarque', v: `${(pp / 1000).toFixed(1)} ton`, c: 'text-blue-600', d: 'Kg por envío certificado' });
                         return ind.map((x, i) => (
@@ -3085,7 +3085,7 @@ export default function MercadoNacional() {
                         const noP = [...allP].filter(p => !cP.has(p) && p).slice(0, 5);
                         if (noP.length > 0) ops.push(`🌎 Caliral no certifica envíos a ${noP.length} países: ${noP.join(', ')}.`);
                         if (depositosRanking.length > 1) ops.push(`🏗️ Depósito líder: ${depositosRanking[0].name} (${fmtPct(depositosRanking[0].share)}). Caliral: ${fmtPct(caliralDepositoStats.share)}.`);
-                        if (companyStats.share < 1) ops.push(`📈 Share como certificadora (${fmtPct(companyStats.share)}) < 1%. Espacio para crecer.`);
+                        if (companyStats.marketShare < 1) ops.push(`📈 Share como certificadora (${fmtPct(companyStats.marketShare)}) < 1%. Espacio para crecer.`);
                         return ops.map((o, i) => (
                           <div key={i} className="bg-violet-50 dark:bg-violet-900/20 rounded-lg p-3 border border-violet-200 dark:border-violet-800">
                             <p className="text-xs text-slate-700 dark:text-slate-300">{o}</p>
@@ -3098,7 +3098,7 @@ export default function MercadoNacional() {
                       {(() => {
                         const sug: { i: string; t: string; p: string }[] = [];
                         if (caliralDepositoStats.productoresCount < 10) sug.push({ i: '🎯', t: `Captar más productores: solo ${caliralDepositoStats.productoresCount} usan Caliral.`, p: 'alta' });
-                        if (companyStats.paises < 10) sug.push({ i: '🌍', t: `Diversificar destinos: solo ${companyStats.paises} países.`, p: 'media' });
+                        if (companyStats.uniquePaises < 10) sug.push({ i: '🌍', t: `Diversificar destinos: solo ${companyStats.uniquePaises} países.`, p: 'media' });
                         if (caliralDepositoStats.share < 5) sug.push({ i: '📈', t: `Aumentar share como depósito: ${fmtPct(caliralDepositoStats.share)}.`, p: 'alta' });
                         sug.push({ i: '📊', t: 'Benchmarking mensual vs top 3 depósitos competidores.', p: 'baja' });
                         return sug.map((s, i) => (
