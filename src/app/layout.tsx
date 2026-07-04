@@ -1,17 +1,7 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Toaster as SonnerToaster } from "sonner";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
+import Script from "next/script";
 
 export const metadata: Metadata = {
   title: "Trazabilidad - Frigorífico San Jacinto",
@@ -32,12 +22,12 @@ export default function RootLayout({
         <meta httpEquiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
         <meta httpEquiv="Pragma" content="no-cache" />
         <meta httpEquiv="Expires" content="0" />
-        <script src="/trazabilidad/scripts/init.js?v=2" />
-        <script src="https://js.puter.com/v2/" />
-        <script dangerouslySetInnerHTML={{ __html: 'try { window.puter = window.puter || {}; } catch(e) {}' }} />
+        <Script src="/trazabilidad/scripts/init.js?v=2" strategy="beforeInteractive" />
+        <Script src="https://js.puter.com/v2/" strategy="afterInteractive" />
+        <Script id="puter-fallback" strategy="afterInteractive">{'try { window.puter = window.puter || {}; } catch(e) {}'}</Script>
       </head>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground`}
+        className="antialiased bg-background text-foreground"
       >
         {children}
         <SonnerToaster position="top-right" richColors closeButton duration={3000} />

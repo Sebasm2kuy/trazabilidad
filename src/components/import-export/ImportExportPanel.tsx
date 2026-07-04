@@ -5,6 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Download, Upload, FileSpreadsheet, CheckCircle2, AlertTriangle, Trash2, Table2 } from 'lucide-react';
 import type { Shipment } from '@/lib/types';
 import { dataUrl } from '@/lib/staticData';
+import { STORAGE_KEYS, readStorageJson, writeStorageJson } from '@/lib/dataRepository';
+import { schedulePush } from '@/lib/googleSheets';
 
 interface ImportedBatch {
   id: string;
@@ -15,15 +17,13 @@ interface ImportedBatch {
   data: Shipment[];
 }
 
-const BATCHES_KEY = 'trazabilidad_imported_batches';
+const BATCHES_KEY = STORAGE_KEYS.importedBatches;
 
 function loadBatches(): ImportedBatch[] {
-  if (typeof window === 'undefined') return [];
-  try { return JSON.parse(localStorage.getItem(BATCHES_KEY) || '[]'); } catch { return []; }
+  return readStorageJson<ImportedBatch[]>(BATCHES_KEY, []);
 }
 function saveBatches(batches: ImportedBatch[]) {
-  if (typeof window === 'undefined') return;
-  localStorage.setItem(BATCHES_KEY, JSON.stringify(batches));
+  writeStorageJson(BATCHES_KEY, batches);
 }
 
 function mapRowToShipment(row: Record<string, unknown>, tipo: 'ingreso' | 'exportacion', idx: number): Shipment | null {
@@ -40,12 +40,14 @@ function mapRowToShipment(row: Record<string, unknown>, tipo: 'ingreso' | 'expor
     fechaTramite = new Date().toISOString();
   }
 
+  const destino = row['Destino'] || row['nombreEstablecimientoDestino'] || row['destino'];
+
   return {
     id: `imp-${tipo}-${Date.now()}-${idx}`,
     nroTramite,
     fechaTramite,
     nroCote,
-    nombreEstablecimientoDestino: String(row['Destino'] || row['nombreEstablecimientoDestino'] || row['destino'] || tipo === 'ingreso' ? 'CALIRAL' : ''),
+    nombreEstablecimientoDestino: String(destino || (tipo === 'ingreso' ? 'CALIRAL' : '')),
     paisDestino: String(row['País'] || row['Pais'] || row['paisDestino'] || row['pais'] || 'URUGUAY'),
     denominacionMercaderia: String(row['Producto'] || row['denominacionMercaderia'] || row['producto'] || ''),
     corte: String(row['Corte'] || row['corte'] || ''),
@@ -118,16 +120,17 @@ export default function ImportExportPanel() {
       // ALSO write to the main table keys so data appears in Depositos/Exportaciones tabs
       if (tipo === 'ingreso') {
         try {
-          const existing = JSON.parse(localStorage.getItem('trazabilidad_dep_imported') || '[]');
-          localStorage.setItem('trazabilidad_dep_imported', JSON.stringify([...mapped, ...existing]));
-        } catch { localStorage.setItem('trazabilidad_dep_imported', JSON.stringify(mapped)); }
+          const existing = readStorageJson<Shipment[]>(STORAGE_KEYS.depImported, []);
+          writeStorageJson(STORAGE_KEYS.depImported, [...mapped, ...existing]);
+        } catch { writeStorageJson(STORAGE_KEYS.depImported, mapped); }
       } else {
         try {
-          const existing = JSON.parse(localStorage.getItem('trazabilidad_exp_imported') || '[]');
-          localStorage.setItem('trazabilidad_exp_imported', JSON.stringify([...mapped, ...existing]));
-        } catch { localStorage.setItem('trazabilidad_exp_imported', JSON.stringify(mapped)); }
+          const existing = readStorageJson<Shipment[]>(STORAGE_KEYS.expImported, []);
+          writeStorageJson(STORAGE_KEYS.expImported, [...mapped, ...existing]);
+        } catch { writeStorageJson(STORAGE_KEYS.expImported, mapped); }
       }
 
+      schedulePush();
       setLastResult({ ok: mapped.length, fail, batchId: batch.id });
     } catch (err) {
       console.error(err);
