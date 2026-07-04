@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-export type Tab = 'dashboard' | 'depositos' | 'exportaciones' | 'cruce-caliral' | 'cruces-x-cote' | 'mercado-nacional' | 'hallazgos' | 'trazabilidad-explorer' | 'trazabilidad' | 'comparativa' | 'analiticas' | 'importar' | 'nuevo';
+export type Tab = 'centro' | 'dashboard' | 'depositos' | 'exportaciones' | 'cruce-caliral' | 'cruces-x-cote' | 'mercado-nacional' | 'hallazgos' | 'trazabilidad-explorer' | 'trazabilidad' | 'comparativa' | 'analiticas' | 'importar' | 'nuevo';
 
 interface Filters {
   pais: string;
@@ -56,7 +56,7 @@ interface AppState {
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
-  activeTab: 'dashboard',
+  activeTab: 'centro',
   setActiveTab: (tab) => set({ activeTab: tab }),
   search: '',
   setSearch: (search) => set({ search }),

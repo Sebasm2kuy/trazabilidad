@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useAppStore } from '@/store/useAppStore';
-import { LayoutDashboard, Warehouse, Ship, ArrowLeftRight, Search, GitCompare, BarChart3, Download, PlusCircle, Settings, Cloud, CloudOff, Menu, Globe, Sparkles } from 'lucide-react';
+import { LayoutDashboard, Warehouse, Ship, ArrowLeftRight, Search, GitCompare, BarChart3, Download, PlusCircle, Settings, Cloud, CloudOff, Menu, Globe, Sparkles, Activity } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { isConfigured, getLastSync } from '@/lib/googleSheets';
 import SettingsSheet from '@/components/SettingsSheet';
@@ -10,6 +10,7 @@ import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { useIsMobile } from '@/hooks/use-mobile';
 
 const tabs = [
+  { id: 'centro' as const, label: 'Centro de Inteligencia', icon: Activity },
   { id: 'dashboard' as const, label: 'Dashboard', icon: LayoutDashboard },
   { id: 'depositos' as const, label: 'A Depósitos', icon: Warehouse },
   { id: 'exportaciones' as const, label: 'Exportaciones', icon: Ship },

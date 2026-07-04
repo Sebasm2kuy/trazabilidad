@@ -17,6 +17,7 @@ import ProductoDestino from '@/components/comparativa/ProductoDestino';
 import ImportExportPanel from '@/components/import-export/ImportExportPanel';
 import NewRecordForm from '@/components/new-record/NewRecordForm';
 import AIAssistant from '@/components/AIAssistant';
+import { CentroInteligencia } from '@/components/centro/CentroInteligencia';
 import { initialPull } from '@/lib/googleSheets';
 import ErrorBoundary from '@/components/ErrorBoundary';
 
@@ -30,6 +31,7 @@ export default function Home() {
 
   const renderContent = () => {
     switch (activeTab) {
+      case 'centro': return <CentroInteligencia />;
       case 'dashboard': return <Dashboard />;
       case 'depositos': return <ShipmentTable />;
       case 'exportaciones': return <ExportacionesTable />;
@@ -43,7 +45,7 @@ export default function Home() {
       case 'analiticas': return <AnalyticsCharts />;
       case 'importar': return <ImportExportPanel />;
       case 'nuevo': return <NewRecordForm />;
-      default: return <Dashboard />;
+      default: return <CentroInteligencia />;
     }
   };
 
