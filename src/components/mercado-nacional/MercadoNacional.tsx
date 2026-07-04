@@ -373,6 +373,7 @@ export default function MercadoNacional() {
   const [activeTab, setActiveTab] = useState<Tab>('dashboard');
   const [topN, setTopN] = useState<5 | 10 | 20>(10);
   const [tipoProductoFilter, setTipoProductoFilter] = useState<TipoProductoFilter>('todos');
+  const [dateRange, setDateRange] = useState<{ start: string; end: string }>({ start: '', end: '' });
   const [depositSortKey, setDepositSortKey] = useState<'pn' | 'regs' | 'paises' | 'clientes' | 'embarques'>('pn');
   const [depositSortDir, setDepositSortDir] = useState<'asc' | 'desc'>('desc');
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -470,10 +471,22 @@ export default function MercadoNacional() {
 
   const filteredRecords = useMemo<MovRecord[]>(() => {
     if (!records.length) return [];
-    if (tipoProductoFilter === 'todos') return records;
-    const target = tipoProductoFilter === 'congelado' ? 'Congelado' : 'Fresco';
-    return records.filter(r => r.tpd === target);
-  }, [records, tipoProductoFilter]);
+    let result = records;
+    // Filtro por tipo de producto
+    if (tipoProductoFilter !== 'todos') {
+      const target = tipoProductoFilter === 'congelado' ? 'Congelado' : 'Fresco';
+      result = result.filter(r => r.tpd === target);
+    }
+    // Filtro por rango de fechas
+    if (dateRange.start || dateRange.end) {
+      result = result.filter(r => {
+        if (dateRange.start && r.f < dateRange.start) return false;
+        if (dateRange.end && r.f > dateRange.end) return false;
+        return true;
+      });
+    }
+    return result;
+  }, [records, tipoProductoFilter, dateRange]);
 
   // --- Total market peso neto (filtered) ---
   const totalMarketPn = useMemo(() => {
@@ -1751,7 +1764,48 @@ export default function MercadoNacional() {
         </CardContent>
       </Card>
 
-      {/* ===== ASISTENTE MERCADO ===== */}
+      {/* ===== GLOBAL DATE RANGE FILTER ===== */}
+      <Card className="border-blue-200 dark:border-blue-900/50 bg-blue-50/40 dark:bg-blue-900/10">
+        <CardContent className="p-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-2 mr-2">
+              <div className="w-7 h-7 rounded-md bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center shrink-0">
+                <Calendar className="w-3.5 h-3.5 text-blue-600" />
+              </div>
+              <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">Período</span>
+            </div>
+            {/* Presets */}
+            {[
+              { label: 'Todo', start: '', end: '' },
+              { label: '2026', start: '2026-01-01', end: '2026-12-31' },
+              { label: '2025', start: '2025-01-01', end: '2025-12-31' },
+              { label: 'Q2 26', start: '2026-04-01', end: '2026-06-30' },
+              { label: 'Q1 26', start: '2026-01-01', end: '2026-03-31' },
+              { label: 'Últimos 6m', start: new Date(Date.now() - 180*86400000).toISOString().substring(0,10), end: new Date().toISOString().substring(0,10) },
+            ].map(preset => {
+              const isActive = dateRange.start === preset.start && dateRange.end === preset.end;
+              return (
+                <button key={preset.label}
+                  onClick={() => setDateRange({ start: preset.start, end: preset.end })}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-full border transition-colors whitespace-nowrap ${isActive ? 'bg-blue-600 text-white border-blue-600 shadow-sm' : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-blue-400 hover:text-blue-700'}`}
+                >{preset.label}</button>
+              );
+            })}
+            {/* Custom date inputs */}
+            <div className="flex items-center gap-1 ml-2">
+              <input type="date" value={dateRange.start} onChange={e => setDateRange(prev => ({ ...prev, start: e.target.value }))}
+                className="text-xs border rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300" />
+              <span className="text-xs text-slate-400">→</span>
+              <input type="date" value={dateRange.end} onChange={e => setDateRange(prev => ({ ...prev, end: e.target.value }))}
+                className="text-xs border rounded px-2 py-1 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300" />
+            </div>
+            {(dateRange.start || dateRange.end) && (
+              <button onClick={() => setDateRange({ start: '', end: '' })}
+                className="px-2 py-1 text-xs text-red-500 hover:text-red-700 hover:bg-red-50 rounded transition-colors">✕ Limpiar</button>
+            )}
+          </div>
+        </CardContent>
+      </Card>
       <Card className="border-violet-200 dark:border-violet-900/40 bg-violet-50/40 dark:bg-violet-900/10">
         <CardContent className="p-4 space-y-3">
           <div className="flex items-start gap-3">
