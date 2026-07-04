@@ -11,8 +11,13 @@ const LAST_SYNC_KEY = 'trazabilidad_last_sync';
 const OLD_SETTINGS_KEY = 'trazabilidad_sheets_url'; // Legacy Google Sheets key
 const SYNC_DEBOUNCE_MS = 3000; // Wait 3s after last change before pushing
 
-// Firebase URL — check for window env variable first, then fall back to hardcoded value
-const HARDCODED_FIREBASE_URL = (typeof window !== 'undefined' && (window as unknown as Record<string, unknown>).TRZ_FB_URL as string) || 'https://trazabilidad-9aa3c-default-rtdb.firebaseio.com';
+// Firebase URL — prefer deployment configuration, then optional browser override for static hosts.
+const DEFAULT_FIREBASE_URL = 'https://trazabilidad-9aa3c-default-rtdb.firebaseio.com';
+const FIREBASE_URL = (
+  process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL ||
+  (typeof window !== 'undefined' ? (window as unknown as Record<string, unknown>).TRZ_FB_URL as string | undefined : undefined) ||
+  DEFAULT_FIREBASE_URL
+).replace(/\/+$/, '');
 
 // Auto-migrate: clear old Google Sheets URL to prevent CORS errors
 if (typeof window !== 'undefined') {
@@ -50,7 +55,7 @@ let isSyncing = false;
 
 export function getSheetUrl(): string {
   // Always use the hardcoded URL — no configuration needed
-  return HARDCODED_FIREBASE_URL;
+  return FIREBASE_URL;
 }
 
 export function setSheetUrl(url: string) {
@@ -61,7 +66,7 @@ export function setSheetUrl(url: string) {
 }
 
 export function isConfigured(): boolean {
-  return true; // Always configured — URL is hardcoded
+  return Boolean(getSheetUrl());
 }
 
 export function getLastSync(): string {

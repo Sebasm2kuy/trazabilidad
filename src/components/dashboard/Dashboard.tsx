@@ -14,7 +14,7 @@ import {
   ArrowRight, TrendingUp, Ship, Warehouse, Clock,
   ArrowLeftRight, Link2, CheckCircle2, AlertTriangle, Unlink,
 } from 'lucide-react';
-import { dataUrl } from '@/lib/staticData';
+import { loadDepositos, loadExportaciones } from '@/lib/dataRepository';
 import { fmt, fd } from '@/lib/utils';
 import { useAppStore, type Tab } from '@/store/useAppStore';
 import type { Shipment, ExpRecord } from '@/lib/types';
@@ -36,95 +36,6 @@ const BLUE_GRADIENT = [
   'bg-sky-600',
   'bg-sky-700',
 ];
-
-// --- Data loaders that read from localStorage first, then static JSON ---
-async function loadAllDepositos(): Promise<Shipment[]> {
-  // 1. Check localStorage imported data first
-  const imported = localStorage.getItem('trazabilidad_dep_imported');
-  let base: Shipment[];
-  if (imported) {
-    try { base = JSON.parse(imported); } catch { base = []; }
-  } else {
-    const r = await fetch(dataUrl('data/shipments.json'));
-    base = await r.json();
-  }
-
-  // 2. Merge new records
-  try {
-    const raw = localStorage.getItem('trazabilidad_dep_new_records');
-    if (raw) {
-      const newRecs: Shipment[] = JSON.parse(raw);
-      const existingIds = new Set(base.map(s => s.id));
-      for (const nr of newRecs) {
-        if (!existingIds.has(nr.id)) base.push(nr);
-      }
-    }
-  } catch { /* ignore */ }
-
-  // 3. Apply edits
-  try {
-    const raw = localStorage.getItem('trazabilidad_dep_edits');
-    if (raw) {
-      const edits: Record<string, Partial<Shipment>> = JSON.parse(raw);
-      base = base.map(s => edits[s.id] ? { ...s, ...edits[s.id] } : s);
-    }
-  } catch { /* ignore */ }
-
-  // 4. Remove deleted
-  try {
-    const raw = localStorage.getItem('trazabilidad_dep_deleted');
-    if (raw) {
-      const deleted: Set<string> = new Set(JSON.parse(raw));
-      base = base.filter(s => !deleted.has(s.id));
-    }
-  } catch { /* ignore */ }
-
-  return base;
-}
-
-async function loadAllExportaciones(): Promise<ExpRecord[]> {
-  // 1. Check localStorage imported data first
-  const imported = localStorage.getItem('trazabilidad_exp_imported');
-  let base: ExpRecord[];
-  if (imported) {
-    try { base = JSON.parse(imported); } catch { base = []; }
-  } else {
-    const r = await fetch(dataUrl('data/exportaciones.json'));
-    base = await r.json();
-  }
-
-  // 2. Merge PDF uploads
-  try {
-    const raw = localStorage.getItem('trazabilidad_new_records');
-    if (raw) {
-      const newRecs: ExpRecord[] = JSON.parse(raw);
-      const existingIds = new Set(base.map(e => e.id));
-      for (const nr of newRecs) {
-        if (!existingIds.has(nr.id)) base.push(nr);
-      }
-    }
-  } catch { /* ignore */ }
-
-  // 3. Apply edits
-  try {
-    const raw = localStorage.getItem('trazabilidad_exp_edits');
-    if (raw) {
-      const edits: Record<string, Partial<ExpRecord>> = JSON.parse(raw);
-      base = base.map(e => edits[e.id] ? { ...e, ...edits[e.id] } : e);
-    }
-  } catch { /* ignore */ }
-
-  // 4. Remove deleted
-  try {
-    const raw = localStorage.getItem('trazabilidad_exp_deleted');
-    if (raw) {
-      const deleted: Set<string> = new Set(JSON.parse(raw));
-      base = base.filter(e => !deleted.has(e.id));
-    }
-  } catch { /* ignore */ }
-
-  return base;
-}
 
 // --- Compute analytics from raw data ---
 interface Analytics {
@@ -379,8 +290,8 @@ export default function Dashboard() {
   const reloadData = useCallback(async () => {
     try {
       const [depositos, exportaciones] = await Promise.all([
-        loadAllDepositos(),
-        loadAllExportaciones(),
+        loadDepositos(),
+        loadExportaciones(),
       ]);
       const computed = computeAnalytics(depositos, exportaciones);
       setAnalytics(computed);

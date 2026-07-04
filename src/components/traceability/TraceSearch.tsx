@@ -14,7 +14,8 @@ import {
   AlertTriangle, CheckCircle2, Circle, TrendingUp, ArrowDownUp,
   FileSpreadsheet, History, Route
 } from 'lucide-react';
-import { fetchShipments, getCotes, dataUrl } from '@/lib/staticData';
+import { getCotes } from '@/lib/staticData';
+import { loadExportaciones, searchDepositos } from '@/lib/dataRepository';
 import type { Shipment } from '@/lib/types';
 import { fd, fmt } from '@/lib/utils';
 import { useAppStore } from '@/store/useAppStore';
@@ -35,54 +36,6 @@ const STAGE_LABELS: Record<string, string> = {
 };
 
 type SearchMode = 'trámite' | 'cote' | 'producto' | 'destino' | 'matricula' | 'precinto';
-
-// --- CACHE para exportaciones ---
-const expRawCache: { data: Shipment[]; loaded: boolean } = { data: [], loaded: false };
-
-function loadExpEdits(): Record<string, Partial<Shipment>> {
-  try { const r = localStorage.getItem('trazabilidad_exp_edits'); return r ? JSON.parse(r) : {}; } catch { return {}; }
-}
-
-function applyExpEdits(data: Shipment[], edits: Record<string, Partial<Shipment>>): Shipment[] {
-  if (Object.keys(edits).length === 0) return data;
-  return data.map(s => edits[s.id] ? { ...s, ...edits[s.id] } : s);
-}
-
-async function ensureExp(): Promise<Shipment[]> {
-  if (!expRawCache.loaded) {
-    const r = await fetch(dataUrl('data/exportaciones.json'));
-    expRawCache.data = await r.json();
-    expRawCache.loaded = true;
-  }
-  return applyExpEdits(expRawCache.data, loadExpEdits());
-}
-
-// --- CACHE para envases (New Record) ---
-const newRecCache: { data: Shipment[]; loaded: boolean } = { data: [], loaded: false };
-async function ensureNewRec() {
-  if (!newRecCache.loaded) {
-    try {
-      const raw = localStorage.getItem('trazabilidad_new_records');
-      if (raw) newRecCache.data = JSON.parse(raw);
-    } catch { /* ignore */ }
-    newRecCache.loaded = true;
-  }
-}
-
-// --- CACHE para importaciones ---
-const impCache: { data: Shipment[]; loaded: boolean } = { data: [], loaded: false };
-async function ensureImp() {
-  if (!impCache.loaded) {
-    try {
-      const raw = localStorage.getItem('trazabilidad_imported_batches');
-      if (raw) {
-        const batches = JSON.parse(raw) as Array<{ data: Shipment[] }>;
-        impCache.data = batches.flatMap(b => b.data || []);
-      }
-    } catch { /* ignore */ }
-    impCache.loaded = true;
-  }
-}
 
 export default function TraceSearch() {
   const [query, setQuery] = useState('');
@@ -148,24 +101,16 @@ export default function TraceSearch() {
       let allResults: Shipment[] = [];
 
       if (dataSource === 'ingresos' || dataSource === 'todos') {
-        let ingParams: Record<string, unknown> = { page: 1, limit: 99999 };
+        const ingParams: Record<string, string | number> = { page: 1, limit: 99999 };
         if (mode === 'cote') ingParams.cote = q;
         else ingParams.search = q;
-        const j = await fetchShipments(ingParams as Parameters<typeof fetchShipments>[0]);
-        allResults.push(...j.data);
+        const data = await searchDepositos(ingParams);
+        allResults.push(...data);
       }
       if (dataSource === 'exportaciones' || dataSource === 'todos') {
-        const expData = await ensureExp();
+        const expData = await loadExportaciones();
         const expFiltered = filterByMode(expData, q, mode);
         allResults.push(...expFiltered);
-      }
-      if (dataSource === 'todos') {
-        await ensureNewRec();
-        const nrFiltered = filterByMode(newRecCache.data, q, mode);
-        allResults.push(...nrFiltered);
-        await ensureImp();
-        const impFiltered = filterByMode(impCache.data, q, mode);
-        allResults.push(...impFiltered);
       }
 
       setResults(allResults);
@@ -195,11 +140,11 @@ export default function TraceSearch() {
     setCruceLoading(true);
     try {
       const [ingRes, expRes] = await Promise.all([
-        fetchShipments({ page: 1, limit: 99999, cote: nroCote }),
-        (async () => { const d = await ensureExp(); return d.filter(s => s.nroCote?.toUpperCase() === nroCote.toUpperCase()); })(),
+        searchDepositos({ page: 1, limit: 99999, cote: nroCote }),
+        (async () => { const d = await loadExportaciones(); return d.filter(s => s.nroCote?.toUpperCase() === nroCote.toUpperCase()); })(),
       ]);
       setCruceData({
-        ingreso: ingRes.data[0] || null,
+        ingreso: ingRes[0] || null,
         exportacion: expRes[0] || null,
       });
     } catch (err) {
