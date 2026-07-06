@@ -226,7 +226,7 @@ function VBarChart({
           </span>
         </div>
       )}
-      <div className="flex items-end gap-1 sm:gap-1.5 h-40 sm:h-52">
+      <div className="flex items-stretch gap-1 sm:gap-1.5 h-40 sm:h-52">
         {displayData.map((d, i) => {
           const compVal = displayComp?.[i]?.value || 0;
           // En modo dual cada uno usa su propio max. En simple, globalMax.
@@ -235,11 +235,11 @@ function VBarChart({
           // Altura mínima visible: si hay valor > 0, al menos 8% para que se vea
           const minH = 8;
           return (
-            <div key={i} className="flex-1 flex flex-col items-center gap-1 group min-w-0">
-              <span className="text-[9px] font-mono text-slate-600 dark:text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+            <div key={i} className="flex-1 flex flex-col items-center gap-1 group min-w-0 h-full">
+              <span className="text-[9px] font-mono text-slate-600 dark:text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap h-3 shrink-0">
                 {fmt(d.value)}
               </span>
-              <div className="w-full flex-1 flex items-end gap-0.5 justify-center">
+              <div className="w-full flex-1 flex items-end gap-0.5 justify-center min-h-0">
                 {displayComp && (
                   <div
                     className="w-1.5 sm:w-2 rounded-t transition-all duration-500"
@@ -253,7 +253,7 @@ function VBarChart({
                   title={`${d.label}: ${fmt(d.value)}${dualAxis ? ` (máx empresa: ${fmt(dataMax)})` : ''}`}
                 />
               </div>
-              <span className="text-[9px] text-slate-500 truncate w-full text-center">{d.label}</span>
+              <span className="text-[9px] text-slate-500 truncate w-full text-center h-3 shrink-0">{d.label}</span>
             </div>
           );
         })}
