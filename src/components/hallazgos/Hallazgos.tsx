@@ -51,29 +51,35 @@ export default function Hallazgos() {
     if (recordsLoaded) return;
     setLoadingRecords(true);
     try {
-      // 1. Try Firebase first
-      const fbUrl = 'https://trazabilidad-9aa3c-default-rtdb.firebaseio.com';
-      const metaResp = await fetch(`${fbUrl}/mercado_nacional_meta.json`);
-      if (metaResp.ok) {
-        const meta = await metaResp.json();
-        if (meta && meta.totalRegistros && meta.totalChunks) {
-          const allRecords: MovRecord[] = [];
-          for (let i = 0; i < meta.totalChunks; i++) {
-            const chunkResp = await fetch(`${fbUrl}/mercado_nacional_data/${i}.json`);
-            if (chunkResp.ok) {
-              const chunk = await chunkResp.json();
-              if (Array.isArray(chunk)) allRecords.push(...chunk);
+      // 0. Chequear bloqueo post-reset
+      const blockFlag = localStorage.getItem('trazabilidad_block_firebase_pull_until');
+      const isBlocked = blockFlag && Date.now() < parseInt(blockFlag, 10);
+
+      // 1. Try Firebase first (si no está bloqueado)
+      if (!isBlocked) {
+        const fbUrl = 'https://trazabilidad-9aa3c-default-rtdb.firebaseio.com';
+        const metaResp = await fetch(`${fbUrl}/mercado_nacional_meta.json`);
+        if (metaResp.ok) {
+          const meta = await metaResp.json();
+          if (meta && meta.totalRegistros && meta.totalChunks) {
+            const allRecords: MovRecord[] = [];
+            for (let i = 0; i < meta.totalChunks; i++) {
+              const chunkResp = await fetch(`${fbUrl}/mercado_nacional_data/${i}.json`);
+              if (chunkResp.ok) {
+                const chunk = await chunkResp.json();
+                if (Array.isArray(chunk)) allRecords.push(...chunk);
+              }
             }
-          }
-          if (allRecords.length > 0) {
-            setRecords(allRecords);
-            setRecordsLoaded(true);
-            setLoadingRecords(false);
-            return;
+            if (allRecords.length > 0) {
+              setRecords(allRecords);
+              setRecordsLoaded(true);
+              setLoadingRecords(false);
+              return;
+            }
           }
         }
       }
-      // 2. Fallback to .json.gz
+      // 2. Fallback to .json.gz (ahora vacío/borrado)
       const rr = await fetch(dataUrl('data/nacional_mgmp.json.gz'));
       if (rr.ok) {
         if (rr.body && typeof DecompressionStream !== 'undefined') {

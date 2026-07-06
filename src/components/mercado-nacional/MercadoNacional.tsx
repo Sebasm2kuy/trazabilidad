@@ -440,36 +440,41 @@ export default function MercadoNacional() {
         if (ra.ok && !cancelled) setAnalytics(await ra.json());
 
         // 1. Primero intentar cargar desde Firebase (datos actualizados por el usuario)
+        // PERO respetar el bloqueo post-reset para no repoblar datos borrados
         const fbUrl = 'https://trazabilidad-9aa3c-default-rtdb.firebaseio.com';
-        setLoadProgress('Verificando datos actualizados…');
-        try {
-          const metaResp = await fetch(`${fbUrl}/mercado_nacional_meta.json`);
-          if (metaResp.ok) {
-            const meta = await metaResp.json();
-            if (meta && meta.totalRegistros && meta.totalChunks) {
-              setLoadProgress(`Cargando ${meta.totalRegistros.toLocaleString()} registros actualizados (${meta.fileName || 'Excel'})…`);
-              // Cargar todos los chunks
-              const allRecords: MovRecord[] = [];
-              for (let i = 0; i < meta.totalChunks; i++) {
-                const chunkResp = await fetch(`${fbUrl}/mercado_nacional_data/${i}.json`);
-                if (chunkResp.ok) {
-                  const chunk = await chunkResp.json();
-                  if (Array.isArray(chunk)) {
-                    allRecords.push(...chunk);
+        const blockFlag = localStorage.getItem('trazabilidad_block_firebase_pull_until');
+        const isBlocked = blockFlag && Date.now() < parseInt(blockFlag, 10);
+        if (!isBlocked) {
+          setLoadProgress('Verificando datos actualizados…');
+          try {
+            const metaResp = await fetch(`${fbUrl}/mercado_nacional_meta.json`);
+            if (metaResp.ok) {
+              const meta = await metaResp.json();
+              if (meta && meta.totalRegistros && meta.totalChunks) {
+                setLoadProgress(`Cargando ${meta.totalRegistros.toLocaleString()} registros actualizados (${meta.fileName || 'Excel'})…`);
+                // Cargar todos los chunks
+                const allRecords: MovRecord[] = [];
+                for (let i = 0; i < meta.totalChunks; i++) {
+                  const chunkResp = await fetch(`${fbUrl}/mercado_nacional_data/${i}.json`);
+                  if (chunkResp.ok) {
+                    const chunk = await chunkResp.json();
+                    if (Array.isArray(chunk)) {
+                      allRecords.push(...chunk);
+                    }
                   }
                 }
-              }
-              if (allRecords.length > 0 && !cancelled) {
-                setRecords(allRecords);
-                setLoadProgress('');
-                setLoadingRecords(false);
-                toast.info(`Datos cargados desde la nube: ${allRecords.length.toLocaleString()} registros (actualizado ${meta.fecha ? new Date(meta.fecha).toLocaleDateString('es-UY') : 'recientemente'}).`);
-                return; // No cargar el .json.gz
+                if (allRecords.length > 0 && !cancelled) {
+                  setRecords(allRecords);
+                  setLoadProgress('');
+                  setLoadingRecords(false);
+                  toast.info(`Datos cargados desde la nube: ${allRecords.length.toLocaleString()} registros (actualizado ${meta.fecha ? new Date(meta.fecha).toLocaleDateString('es-UY') : 'recientemente'}).`);
+                  return; // No cargar el .json.gz
+                }
               }
             }
+          } catch (fbErr) {
+            console.warn('Firebase load failed, falling back to .json.gz:', fbErr);
           }
-        } catch (fbErr) {
-          console.warn('Firebase load failed, falling back to .json.gz:', fbErr);
         }
 
         // 2. Si no hay datos en Firebase, cargar el .json.gz pre-cargado
