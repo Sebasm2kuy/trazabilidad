@@ -46,28 +46,77 @@ interface TextItem {
 }
 
 function parseDateDDMMYY(d: string): string | null {
-  const m = d.match(/(\d{2})\/(\d{2})\/(\d{2,4})/);
+  const m = d.match(/(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
   if (!m) return null;
-  let day = parseInt(m[1], 10);
-  let month = parseInt(m[2], 10);
+  let a = parseInt(m[1], 10); // first part (day in DD/MM, month in MM/DD)
+  let b = parseInt(m[2], 10); // second part
   let year = parseInt(m[3], 10);
   if (year < 100) year += 2000;
-  // Validate
-  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
-  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T00:00:00`;
+  // Validate ranges
+  if (a < 1 || a > 31 || b < 1 || b > 31) return null;
+
+  const make = (y: number, mo: number, day: number): string | null => {
+    if (mo < 1 || mo > 12 || day < 1 || day > 31) return null;
+    const dt = new Date(y, mo - 1, day);
+    if (dt.getMonth() !== mo - 1 || dt.getDate() !== day) return null; // auto-corrected
+    return `${y}-${String(mo).padStart(2, '0')}-${String(day).padStart(2, '0')}T00:00:00`;
+  };
+
+  // If first part > 12, must be DD/MM
+  if (a > 12 && b <= 12) return make(year, b, a);
+  // If second part > 12, must be MM/DD
+  if (b > 12 && a <= 12) return make(year, a, b);
+
+  // Ambiguous (both ≤ 12): apply future-date heuristic
+  const ddMM = make(year, b, a); // DD/MM interpretation
+  const mmDD = make(year, a, b); // MM/DD interpretation
+  if (ddMM && mmDD) {
+    const now = Date.now();
+    const ddFuture = new Date(ddMM).getTime() > now;
+    const mmFuture = new Date(mmDD).getTime() > now;
+    // If DD/MM is future and MM/DD is past → use MM/DD (US format)
+    if (ddFuture && !mmFuture) return mmDD;
+    // If MM/DD is future and DD/MM is past → use DD/MM (UY format)
+    if (mmFuture && !ddFuture) return ddMM;
+    // Both past or both future → prefer DD/MM (Uruguayan default)
+    return ddMM;
+  }
+  return ddMM || mmDD;
 }
 
 function parseDateWithTime(d: string): string | null {
-  // Format: "11/06/26 14:57"
-  const m = d.match(/(\d{2})\/(\d{2})\/(\d{2,4})\s+(\d{2}):(\d{2})/);
+  // Format: "11/06/26 14:57" or "3/12/26 14:57"
+  const m = d.match(/(\d{1,2})\/(\d{1,2})\/(\d{2,4})\s+(\d{1,2}):(\d{2})/);
   if (!m) return null;
-  let day = parseInt(m[1], 10);
-  let month = parseInt(m[2], 10);
+  let a = parseInt(m[1], 10);
+  let b = parseInt(m[2], 10);
   let year = parseInt(m[3], 10);
   if (year < 100) year += 2000;
   const hour = parseInt(m[4], 10);
   const min = parseInt(m[5], 10);
-  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T${String(hour).padStart(2, '0')}:${String(min).padStart(2, '0')}:00`;
+  if (a < 1 || a > 31 || b < 1 || b > 31) return null;
+
+  const make = (y: number, mo: number, day: number): string | null => {
+    if (mo < 1 || mo > 12 || day < 1 || day > 31) return null;
+    const dt = new Date(y, mo - 1, day, hour, min);
+    if (dt.getMonth() !== mo - 1 || dt.getDate() !== day) return null;
+    return `${y}-${String(mo).padStart(2, '0')}-${String(day).padStart(2, '0')}T${String(hour).padStart(2, '0')}:${String(min).padStart(2, '0')}:00`;
+  };
+
+  if (a > 12 && b <= 12) return make(year, b, a);
+  if (b > 12 && a <= 12) return make(year, a, b);
+
+  const ddMM = make(year, b, a);
+  const mmDD = make(year, a, b);
+  if (ddMM && mmDD) {
+    const now = Date.now();
+    const ddFuture = new Date(ddMM).getTime() > now;
+    const mmFuture = new Date(mmDD).getTime() > now;
+    if (ddFuture && !mmFuture) return mmDD;
+    if (mmFuture && !ddFuture) return ddMM;
+    return ddMM;
+  }
+  return ddMM || mmDD;
 }
 
 // Find the value that appears after a label (within ~50px to the right on same y line)

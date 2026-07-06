@@ -113,27 +113,51 @@ function cleanDate(val: unknown): string | null {
     const d = new Date(s);
     if (!isNaN(d.getTime()) && d.getFullYear() >= 1900) return d.toISOString();
   }
-  // Handle DD/MM/YYYY or MM/DD/YYYY strings
-  const parts = s.split('/');
+  // Handle DD/MM/YYYY, MM/DD/YYYY, DD/MM/YY, MM/DD/YY strings
+  const parts = s.split(/[\/\-\.]/);
   if (parts.length === 3) {
-    const a = parseInt(parts[0]), b = parseInt(parts[1]), y = parseInt(parts[2]);
-    // If first part > 12, must be DD/MM/YYYY
-    if (a > 12) {
-      const d = new Date(y, b - 1, a);
-      if (!isNaN(d.getTime()) && d.getFullYear() >= 1900) return d.toISOString();
+    let a = parseInt(parts[0]), b = parseInt(parts[1]), y = parseInt(parts[2]);
+    if (isNaN(a) || isNaN(b) || isNaN(y)) return null;
+    // Fix 2-digit year: 00-99 → 2000-2099 (datos del siglo XXI)
+    if (y < 100) y += 2000;
+    // Helper: construir fecha válida
+    const make = (year: number, monthIdx: number, day: number): Date | null => {
+      const d = new Date(year, monthIdx, day);
+      if (isNaN(d.getTime()) || d.getFullYear() < 1900) return null;
+      // Verificar que la fecha no se "auto-corrigió" (ej: 31/02 → 03/03)
+      if (d.getMonth() !== monthIdx || d.getDate() !== day) return null;
+      return d;
+    };
+    const now = Date.now();
+    // Si a > 12, debe ser DD/MM (día > 12)
+    if (a > 12 && b <= 12) {
+      const d = make(y, b - 1, a);
+      if (d) return d.toISOString();
     }
-    // If second part > 12, first must be month ≤ 12 → MM/DD/YYYY? No, b > 12 means b is day in DD/MM
-    if (b > 12) {
-      const d = new Date(y, b - 1, a);
-      if (!isNaN(d.getTime()) && d.getFullYear() >= 1900) return d.toISOString();
+    // Si b > 12, debe ser MM/DD (día > 12 en segunda posición)
+    if (b > 12 && a <= 12) {
+      const d = make(y, a - 1, b);
+      if (d) return d.toISOString();
     }
-    // Ambiguous (both ≤ 12): use the Excel cell format hint — since Registro Excel
-    // from Uruguay uses DD/MM/YYYY, prefer that interpretation
-    const dDD = new Date(y, b - 1, a);
-    if (!isNaN(dDD.getTime()) && dDD.getFullYear() >= 1900) return dDD.toISOString();
-    // Fallback: MM/DD/YYYY
-    const dMM = new Date(y, a - 1, b);
-    if (!isNaN(dMM.getTime()) && dMM.getFullYear() >= 1900) return dMM.toISOString();
+    // Ambiguo (ambos ≤ 12): aplicar heurística de fecha futura.
+    // Los datos del Registro son operativos (ya ocurrieron), así que si
+    // una interpretación da fecha futura y la otra pasada, usar la pasada.
+    // Esto resuelve el caso "3/12/26": DD/MM → 3 Dic 2026 (futuro) vs
+    // MM/DD → 12 Mar 2026 (pasado). Elegimos MM/DD.
+    const dDD = make(y, b - 1, a); // interpretación DD/MM
+    const dMM = make(y, a - 1, b); // interpretación MM/DD
+    if (dDD && dMM) {
+      const ddFuture = dDD.getTime() > now;
+      const mmFuture = dMM.getTime() > now;
+      // Si DD/MM es futura y MM/DD es pasada → usar MM/DD (formato US)
+      if (ddFuture && !mmFuture) return dMM.toISOString();
+      // Si MM/DD es futura y DD/MM es pasada → usar DD/MM (formato UY)
+      if (mmFuture && !ddFuture) return dDD.toISOString();
+      // Ambas pasadas o ambas futuras: preferir DD/MM (formato Uruguay por defecto)
+      return dDD.toISOString();
+    }
+    if (dDD) return dDD.toISOString();
+    if (dMM) return dMM.toISOString();
   }
   // Last resort: let JS try
   const d = new Date(s);
