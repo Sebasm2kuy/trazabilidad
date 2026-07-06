@@ -1,28 +1,38 @@
 // ============================================================
 // NACIONAL LOADER — Carga perezosa y cacheada del dataset MGAP
 // ------------------------------------------------------------
-// Reutilizable por NIREA, Mercado Nacional, Hallazgos, etc.
+// Orden de prioridad:
+// 1. Firebase (mercado_nacional_data) — datos subidos por el usuario
+// 2. Cache en memoria
+// 3. Archivo estático nacional_mgmp.json.gz (puede no existir)
 // ============================================================
 
 import type { MovRecord } from '@/intelligence/types';
 import { dataUrl } from '@/lib/staticData';
+import { loadNacionalFromFirebase } from '@/lib/parseNacionalExcel';
 
 let cache: MovRecord[] | null = null;
 let loadingPromise: Promise<MovRecord[]> | null = null;
 
-/** Carga el dataset nacional (222K registros) con cache en memoria. */
+/** Carga el dataset nacional con cache en memoria. */
 export async function loadNacionalRecords(): Promise<MovRecord[]> {
   if (cache) return cache;
   if (loadingPromise) return loadingPromise;
 
   loadingPromise = (async () => {
     try {
+      // 1. Intentar Firebase primero (datos subidos por el usuario)
+      const fbData = await loadNacionalFromFirebase();
+      if (fbData && fbData.length > 0) {
+        cache = fbData;
+        return fbData;
+      }
+
+      // 2. Fallback al archivo estático .json.gz (puede no existir post-reset)
       const rr = await fetch(dataUrl('data/nacional_mgmp.json.gz'));
       if (!rr.ok) {
-        // 404 es esperado después del reset (archivo borrado del bundle).
-        // No loguear como error, simplemente devolver array vacío.
         if (rr.status !== 404) {
-          console.warn(`[nacional-loader] HTTP ${rr.status} al cargar nacional_mgmp.json.gz`);
+          console.warn(`[nacional-loader] HTTP ${rr.status}`);
         }
         cache = [];
         return [];
@@ -53,7 +63,7 @@ export async function loadNacionalRecords(): Promise<MovRecord[]> {
   return loadingPromise;
 }
 
-/** Limpia el cache (para forzar recarga). */
+/** Limpia el cache (para forzar recarga después de subir nuevo Excel). */
 export function clearNacionalCache(): void {
   cache = null;
   loadingPromise = null;

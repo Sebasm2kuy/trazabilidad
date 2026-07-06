@@ -4,6 +4,8 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Calendar, Sparkles, Loader2 } from 'lucide-react';
 import { dataUrl } from '@/lib/staticData';
+import { loadNacionalRecords } from '@/lib/nacionalLoader';
+import { NacionalUploadButton } from '@/components/nacional-upload/NacionalUploadButton';
 import React from 'react';
 
 const SEVERITY_COLORS: Record<string, { bg: string; border: string; text: string }> = {
@@ -46,56 +48,14 @@ export default function Hallazgos() {
     setLoading(false);
   }, []);
 
-  // Load full records (lazy, when user interacts)
+  // Load full records (lazy, when user interacts) — usa nacionalLoader compartido
   const loadRecords = useCallback(async () => {
     if (recordsLoaded) return;
     setLoadingRecords(true);
     try {
-      // 0. Chequear bloqueo post-reset
-      const blockFlag = localStorage.getItem('trazabilidad_block_firebase_pull_until');
-      const isBlocked = blockFlag && Date.now() < parseInt(blockFlag, 10);
-
-      // 1. Try Firebase first (si no está bloqueado)
-      if (!isBlocked) {
-        const fbUrl = 'https://trazabilidad-9aa3c-default-rtdb.firebaseio.com';
-        const metaResp = await fetch(`${fbUrl}/mercado_nacional_meta.json`);
-        if (metaResp.ok) {
-          const meta = await metaResp.json();
-          if (meta && meta.totalRegistros && meta.totalChunks) {
-            const allRecords: MovRecord[] = [];
-            for (let i = 0; i < meta.totalChunks; i++) {
-              const chunkResp = await fetch(`${fbUrl}/mercado_nacional_data/${i}.json`);
-              if (chunkResp.ok) {
-                const chunk = await chunkResp.json();
-                if (Array.isArray(chunk)) allRecords.push(...chunk);
-              }
-            }
-            if (allRecords.length > 0) {
-              setRecords(allRecords);
-              setRecordsLoaded(true);
-              setLoadingRecords(false);
-              return;
-            }
-          }
-        }
-      }
-      // 2. Fallback to .json.gz (ahora vacío/borrado)
-      const rr = await fetch(dataUrl('data/nacional_mgmp.json.gz'));
-      if (rr.ok) {
-        if (rr.body && typeof DecompressionStream !== 'undefined') {
-          const ds = new DecompressionStream('gzip');
-          const decompressed = rr.body.pipeThrough(ds);
-          const text = await new Response(decompressed).text();
-          setRecords(JSON.parse(text));
-        } else {
-          const buf = await rr.arrayBuffer();
-          const pako = await import('pako');
-          const decompressed = pako.inflate(new Uint8Array(buf));
-          const text = new TextDecoder().decode(decompressed);
-          setRecords(JSON.parse(text));
-        }
-        setRecordsLoaded(true);
-      }
+      const recs = await loadNacionalRecords();
+      setRecords(recs);
+      setRecordsLoaded(true);
     } catch (err) { console.error('Error loading records:', err); }
     setLoadingRecords(false);
   }, [recordsLoaded]);
@@ -281,12 +241,15 @@ export default function Hallazgos() {
 
   return (
     <div className="p-6 space-y-4 max-w-[1400px]">
-      <div className="flex items-center gap-3">
-        <Sparkles className="h-7 w-7 text-violet-600" />
-        <div>
-          <h2 className="text-2xl font-bold text-slate-800">Hallazgos</h2>
-          <p className="text-xs text-slate-500">Descubridor automático de patrones y cambios</p>
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-3">
+          <Sparkles className="h-7 w-7 text-violet-600" />
+          <div>
+            <h2 className="text-2xl font-bold text-slate-800">Hallazgos</h2>
+            <p className="text-xs text-slate-500">Descubridor automático de patrones y cambios</p>
+          </div>
         </div>
+        <NacionalUploadButton />
       </div>
 
       {/* Filtros de período */}

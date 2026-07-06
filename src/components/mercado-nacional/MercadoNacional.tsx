@@ -16,6 +16,7 @@ import {
 import { dataUrl } from '@/lib/staticData';
 import { fmt } from '@/lib/utils';
 import { toast } from 'sonner';
+import { NacionalUploadButton } from '@/components/nacional-upload/NacionalUploadButton';
 
 // ============================================================
 // TYPES

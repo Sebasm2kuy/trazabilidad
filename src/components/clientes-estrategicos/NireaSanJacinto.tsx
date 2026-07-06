@@ -17,6 +17,7 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { loadNacionalRecords } from '@/lib/nacionalLoader';
+import { NacionalUploadButton } from '@/components/nacional-upload/NacionalUploadButton';
 import {
   computeCapturaCaliral, generateCapturaInsights,
   CLIENTES_ESTRATEGICOS, CALIRAL_ID,
@@ -78,15 +79,20 @@ export function NireaSanJacinto() {
       {/* HEADER */}
       <div className="px-8 pt-8 pb-4">
         <div className="max-w-6xl mx-auto">
-          <p className="text-[11px] uppercase tracking-widest text-violet-600 dark:text-violet-400 font-semibold mb-1">
-            Inteligencia Comercial · Cliente Estratégico
-          </p>
-          <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-50 mb-1">
-            {NIREA_NAME}
-          </h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400">
-            Análisis de todas las exportaciones del cliente y participación de CALIRAL.
-          </p>
+          <div className="flex items-start justify-between gap-4 flex-wrap">
+            <div>
+              <p className="text-[11px] uppercase tracking-widest text-violet-600 dark:text-violet-400 font-semibold mb-1">
+                Inteligencia Comercial · Cliente Estratégico
+              </p>
+              <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-50 mb-1">
+                {NIREA_NAME}
+              </h1>
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                Análisis de todas las exportaciones del cliente y participación de CALIRAL.
+              </p>
+            </div>
+            <NacionalUploadButton />
+          </div>
         </div>
       </div>
 
