@@ -252,6 +252,10 @@ export default function ShipmentTable() {
   const [destinoOpen, setDestinoOpen] = useState(false);
   const [destinoSearch, setDestinoSearch] = useState('');
   const coteInputRef = useRef<HTMLInputElement>(null);
+  const coteDropdownRef = useRef<HTMLDivElement>(null);
+  const paisDropdownRef = useRef<HTMLDivElement>(null);
+  const productoDropdownRef = useRef<HTMLDivElement>(null);
+  const destinoDropdownRef = useRef<HTMLDivElement>(null);
   const [importing, setImporting] = useState(false);
   const [pdfLoading, setPdfLoading] = useState(false);
   const [pdfError, setPdfError] = useState<string | null>(null);
@@ -314,6 +318,10 @@ export default function ShipmentTable() {
       await ensureDep();
       if (cancelled) return;
 
+      // Refresh filter options NOW that depCache.data is loaded
+      // (depCache.loaded is not React state, so the other useEffect doesn't re-run)
+      refreshOptions();
+
       // Start with raw data + new records, apply edits, remove deleted
       let allData = applyEdits([...depCache.data, ...newRecords], edits);
       allData = allData.filter(s => !deletedIds.has(s.id));
@@ -353,6 +361,19 @@ export default function ShipmentTable() {
   }, [page, search, filters, limit, edits, newRecords, deletedIds, dataVersion]);
 
   useEffect(() => { setPage(1); }, [search, filters]);
+
+  // Click-outside handler for all dropdowns
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      const target = e.target as Node;
+      if (coteDropdownRef.current && !coteDropdownRef.current.contains(target)) setCoteOpen(false);
+      if (paisDropdownRef.current && !paisDropdownRef.current.contains(target)) setPaisOpen(false);
+      if (productoDropdownRef.current && !productoDropdownRef.current.contains(target)) setProductoOpen(false);
+      if (destinoDropdownRef.current && !destinoDropdownRef.current.contains(target)) setDestinoOpen(false);
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const handleOpenDetail = useCallback((s: Shipment) => {
     setSelected(s);
@@ -785,7 +806,7 @@ export default function ShipmentTable() {
           {hasFilters && <Button variant="ghost" size="sm" onClick={clearFilters}><X className="h-4 w-4 mr-1" />Limpiar</Button>}
         </div>
         <div className="flex flex-wrap gap-3 items-center">
-          <div className="relative">
+          <div className="relative" ref={coteDropdownRef}>
             <button
               type="button"
               onClick={() => { setCoteOpen(!coteOpen); setCoteSearch(''); }}
@@ -829,7 +850,7 @@ export default function ShipmentTable() {
               </div>
             )}
           </div>
-          <div className="relative">
+          <div className="relative" ref={paisDropdownRef}>
             <button
               type="button"
               onClick={() => { setPaisOpen(!paisOpen); setPaisSearch(''); }}
@@ -857,7 +878,7 @@ export default function ShipmentTable() {
               </div>
             )}
           </div>
-          <div className="relative">
+          <div className="relative" ref={productoDropdownRef}>
             <button
               type="button"
               onClick={() => { setProductoOpen(!productoOpen); setProductoSearch(''); }}
@@ -885,7 +906,7 @@ export default function ShipmentTable() {
               </div>
             )}
           </div>
-          <div className="relative">
+          <div className="relative" ref={destinoDropdownRef}>
             <button
               type="button"
               onClick={() => { setDestinoOpen(!destinoOpen); setDestinoSearch(''); }}
