@@ -73,7 +73,14 @@ export default function TrazabilidadExplorer() {
     try {
       const r = await fetch(dataUrl('data/stock_trazabilidad.json'));
       if (r.ok) {
-        const d = await r.json();
+        const raw = await r.json();
+        // Robustez: si el archivo es un array vacío o no tiene .cotes, usar estructura vacía
+        const d = raw && Array.isArray(raw.cotes) ? raw : {
+          fecha: '',
+          cliente: '',
+          pallets: [],
+          cotes: [],
+        };
         // Merge multiple data sources for ingresos:
         // 1. dep_new_records (manual + PDF uploads)
         // 2. dep_edits (edits to existing records, including new_dep_ ones)

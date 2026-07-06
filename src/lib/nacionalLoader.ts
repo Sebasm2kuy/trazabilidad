@@ -18,7 +18,15 @@ export async function loadNacionalRecords(): Promise<MovRecord[]> {
   loadingPromise = (async () => {
     try {
       const rr = await fetch(dataUrl('data/nacional_mgmp.json.gz'));
-      if (!rr.ok) throw new Error(`HTTP ${rr.status}`);
+      if (!rr.ok) {
+        // 404 es esperado después del reset (archivo borrado del bundle).
+        // No loguear como error, simplemente devolver array vacío.
+        if (rr.status !== 404) {
+          console.warn(`[nacional-loader] HTTP ${rr.status} al cargar nacional_mgmp.json.gz`);
+        }
+        cache = [];
+        return [];
+      }
       let text: string;
       if (rr.body && typeof DecompressionStream !== 'undefined') {
         const ds = new DecompressionStream('gzip');
@@ -34,7 +42,7 @@ export async function loadNacionalRecords(): Promise<MovRecord[]> {
       cache = data;
       return data;
     } catch (e) {
-      console.error('[nacional-loader] carga falló:', e);
+      console.warn('[nacional-loader] carga falló (datos vacíos):', e);
       cache = [];
       return [];
     } finally {

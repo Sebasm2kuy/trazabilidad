@@ -6,8 +6,9 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 /** Format number with locale (es-UY) */
-export function fmt(n: number): string {
-  return n?.toLocaleString('es-UY') ?? '-';
+export function fmt(n: number | null | undefined): string {
+  if (n == null || isNaN(n as number)) return '-';
+  return (n as number).toLocaleString('es-UY');
 }
 
 /** Format date string to readable format */

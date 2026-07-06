@@ -1833,7 +1833,7 @@ export default function MercadoNacional() {
               </div>
               <div>
                 <h2 className="text-base sm:text-lg font-bold text-slate-800 dark:text-slate-100">Mercado Nacional · BI</h2>
-                <p className="text-[11px] text-slate-500">Análisis competitivo · {fmt(records.length)} registros · {analytics ? `${analytics.totalPeso.toLocaleString('es')} kg total mercado` : ''}</p>
+                <p className="text-[11px] text-slate-500">Análisis competitivo · {fmt(records.length)} registros · {analytics && analytics.totalPeso ? `${fmt(analytics.totalPeso)} kg total mercado` : ''}</p>
               </div>
             </div>
             <div className="flex gap-2 items-center w-full sm:w-auto">
