@@ -10,7 +10,8 @@ import {
   ArrowRight, Calendar, Box, Weight, Hash, FileText
 } from 'lucide-react';
 import { dataUrl } from '@/lib/staticData';
-import type { Shipment } from '@/lib/types';
+import { loadDepositos, loadExportaciones } from '@/lib/dataRepository';
+import type { Shipment, ExpRecord } from '@/lib/types';
 import { fd } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useAppStore } from '@/store/useAppStore';
@@ -71,90 +72,181 @@ export default function TrazabilidadExplorer() {
 
   const reloadData = useCallback(async () => {
     try {
-      const r = await fetch(dataUrl('data/stock_trazabilidad.json'));
-      if (r.ok) {
-        const raw = await r.json();
-        // Robustez: si el archivo es un array vacío o no tiene .cotes, usar estructura vacía
-        const d = raw && Array.isArray(raw.cotes) ? raw : {
-          fecha: '',
-          cliente: '',
-          pallets: [],
-          cotes: [],
-        };
-        // Merge multiple data sources for ingresos:
-        // 1. dep_new_records (manual + PDF uploads)
-        // 2. dep_edits (edits to existing records, including new_dep_ ones)
-        // 3. dep_imported (Excel imports)
-        const newRecs = JSON.parse(localStorage.getItem('trazabilidad_dep_new_records') || '[]');
-        const edits = JSON.parse(localStorage.getItem('trazabilidad_dep_edits') || '{}');
-        const imported = JSON.parse(localStorage.getItem('trazabilidad_dep_imported') || '[]');
+      // Cargar depósitos y exportaciones desde dataRepository (que respeta
+      // imported/new/edits/deleted en localStorage)
+      const [depositos, exportaciones] = await Promise.all([
+        loadDepositos(),
+        loadExportaciones(),
+      ]);
 
-        // Build a map of all ingresos by COTE
-        const allIngresosByCote: Record<string, { cajas: number; tramites: number[]; kg: number; fecha: string; denom: string; corte: string }> = {};
-
-        // From new_records
-        for (const r of newRecs) {
-          if (r.nroCote) {
-            if (!allIngresosByCote[r.nroCote]) allIngresosByCote[r.nroCote] = { cajas: 0, tramites: [], kg: 0, fecha: '', denom: '', corte: '' };
-            allIngresosByCote[r.nroCote].cajas += r.cantidadEnvases || 0;
-            allIngresosByCote[r.nroCote].kg += r.pesoNeto || 0;
-            if (r.nroTramite) allIngresosByCote[r.nroCote].tramites.push(r.nroTramite);
-            if (r.fechaEmitidoCote && !allIngresosByCote[r.nroCote].fecha) allIngresosByCote[r.nroCote].fecha = r.fechaEmitidoCote;
-            if (r.denominacionMercaderia && !allIngresosByCote[r.nroCote].denom) allIngresosByCote[r.nroCote].denom = r.denominacionMercaderia;
-            if (r.corte && !allIngresosByCote[r.nroCote].corte) allIngresosByCote[r.nroCote].corte = r.corte;
+      // También cargar stock_trazabilidad.json si existe (pallets físicos)
+      let palletsData: StockPallet[] = [];
+      try {
+        const r = await fetch(dataUrl('data/stock_trazabilidad.json'));
+        if (r.ok) {
+          const raw = await r.json();
+          if (raw && Array.isArray(raw.pallets)) {
+            palletsData = raw.pallets;
           }
         }
+      } catch { /* noop */ }
 
-        // From edits (edits can change nroCote of a record, creating "new" ingresos)
-        for (const [editId, editData] of Object.entries(edits)) {
-          const ed = editData as any;
-          if (ed.nroCote) {
-            if (!allIngresosByCote[ed.nroCote]) allIngresosByCote[ed.nroCote] = { cajas: 0, tramites: [], kg: 0, fecha: '', denom: '', corte: '' };
-            // Only add if this edit is for a new_dep_ record (manual creation) or has cantidadEnvases
-            if (editId.startsWith('new_dep_') || editId.startsWith('manual_') || editId.startsWith('pdf_')) {
-              allIngresosByCote[ed.nroCote].cajas += ed.cantidadEnvases || 0;
-              allIngresosByCote[ed.nroCote].kg += ed.pesoNeto || 0;
-              if (ed.nroTramite) allIngresosByCote[ed.nroCote].tramites.push(ed.nroTramite);
-              if (ed.fechaEmitidoCote && !allIngresosByCote[ed.nroCote].fecha) allIngresosByCote[ed.nroCote].fecha = ed.fechaEmitidoCote;
-              if (ed.denominacionMercaderia && !allIngresosByCote[ed.nroCote].denom) allIngresosByCote[ed.nroCote].denom = ed.denominacionMercaderia;
-              if (ed.corte && !allIngresosByCote[ed.nroCote].corte) allIngresosByCote[ed.nroCote].corte = ed.corte;
+      // Indexar exportaciones por COTE para referencias cruzadas
+      const expByCote = new Map<string, ExpRecord[]>();
+      for (const e of exportaciones) {
+        if (!e.nroCote) continue;
+        if (!expByCote.has(e.nroCote)) expByCote.set(e.nroCote, []);
+        expByCote.get(e.nroCote)!.push(e);
+      }
+
+      // Indexar pallets por COTE (extraer COTE del contenido)
+      const palletsByCote = new Map<string, StockPallet[]>();
+      for (const p of palletsData) {
+        const match = p.contenido?.match(/COTE\s*(P\d{4,8})/i) || p.contenido?.match(/(P\d{4,8})/i);
+        const cote = match?.[1]?.toUpperCase();
+        if (!cote) continue;
+        if (!palletsByCote.has(cote)) palletsByCote.set(cote, []);
+        palletsByCote.get(cote)!.push(p);
+      }
+
+      // Construir mapa de COTEs desde depósitos (ingresos)
+      const cotesMap = new Map<string, CoteTrazabilidad>();
+
+      for (const dep of depositos) {
+        const cote = dep.nroCote;
+        if (!cote) continue;
+
+        if (!cotesMap.has(cote)) {
+          // Determinar si es retorno (tiene exportación previa)
+          const exps = expByCote.get(cote) || [];
+          const isRetorno = exps.length > 0;
+
+          // Datos de pallets si existen
+          const pallets = palletsByCote.get(cote) || [];
+          const stockCajas = pallets.reduce((s, p) => s + (p.cajas || 0), 0);
+          const stockKg = pallets.reduce((s, p) => s + (p.kilos || 0), 0);
+          const stockProductos = [...new Set(pallets.map(p => p.producto).filter(Boolean))];
+          const stockContenedores = [...new Set(pallets.map(p => p.contenedor).filter(Boolean))];
+
+          // Referencias de exportación
+          const expRefCajas = exps.reduce((s, e) => s + (e.cantidadEnvases || 0), 0);
+          const expRefTramites = exps.map(e => e.nroTramite).filter(Boolean) as number[];
+
+          // Ingreso desde depósito
+          const ingresoCajas = dep.cantidadEnvases || 0;
+          const ingresoKg = dep.pesoNeto || 0;
+          const ingresoFechas = dep.fechaEmitidoCote ? [dep.fechaEmitidoCote] : (dep.fechaTramite ? [dep.fechaTramite] : []);
+          const ingresoCortes = dep.corte ? [dep.corte] : [];
+          const ingresoDenoms = dep.denominacionMercaderia ? [dep.denominacionMercaderia] : [];
+          const ingresoTramites = dep.nroTramite ? [dep.nroTramite] : [];
+
+          const saldoTeorico = ingresoCajas - expRefCajas;
+          const diff = stockCajas > 0 ? stockCajas - saldoTeorico : null;
+
+          // Determinar estado y causa
+          let estado = 'EN_STOCK';
+          let causaDiff: string | null = null;
+          let causaDiffDesc = '';
+          if (diff !== null && diff !== 0) {
+            if (isRetorno && diff > 0) {
+              causaDiff = 'A';
+              causaDiffDesc = 'Retorno (mercadería reingresada)';
+            } else if (diff < 0 && exps.length === 0) {
+              estado = 'SIN_REF_EXP';
+              causaDiff = 'D';
+              causaDiffDesc = 'Sin exportación de referencia';
+            } else if (Math.abs(diff) <= 2) {
+              causaDiff = 'E';
+              causaDiffDesc = 'Ajuste menor (±2 cajas)';
+            } else {
+              causaDiff = 'C';
+              causaDiffDesc = 'Diferencia significativa';
             }
           }
-        }
-
-        // From imported (Excel imports) - only add COTEs not already in newRecs/edits
-        for (const r of imported) {
-          if (r.nroCote && !allIngresosByCote[r.nroCote]) {
-            allIngresosByCote[r.nroCote] = {
-              cajas: r.cantidadEnvases || 0,
-              tramites: r.nroTramite ? [r.nroTramite] : [],
-              kg: r.pesoNeto || 0,
-              fecha: r.fechaEmitidoCote || '',
-              denom: r.denominacionMercaderia || '',
-              corte: r.corte || '',
-            };
+          if (ingresoCajas === 0) {
+            estado = 'SIN_INGRESO';
           }
-        }
 
-        // Apply to cotes
-        for (const cote of d.cotes) {
-          const ingresoData = allIngresosByCote[cote.cote];
-          if (ingresoData && cote.ingresoCajas === 0) {
-            cote.ingresoCajas = ingresoData.cajas;
-            cote.ingresoKg = Math.round(ingresoData.kg);
-            cote.ingresoTramites = ingresoData.tramites;
-            cote.ingresoFechas = ingresoData.fecha ? [ingresoData.fecha] : [];
-            cote.ingresoDenoms = ingresoData.denom ? [ingresoData.denom] : [];
-            cote.ingresoCortes = ingresoData.corte ? [ingresoData.corte] : [];
-            cote.estado = 'EN_STOCK';
-            cote.causaDiff = null;
-            cote.causaDiffDesc = 'Ingreso manual';
-            cote.saldoTeorico = cote.ingresoCajas - cote.expRefCajas;
-            cote.diff = cote.stockCajas - cote.saldoTeorico;
-          }
+          cotesMap.set(cote, {
+            cote,
+            tipo: 'DEP',
+            isRetorno,
+            estado,
+            stockPallets: pallets.length,
+            stockCajas,
+            stockKg,
+            stockProductos,
+            stockContenedores,
+            ingresoCajas,
+            ingresoKg,
+            ingresoFechas,
+            ingresoCortes,
+            ingresoDenoms,
+            ingresoTramites,
+            expRefCount: exps.length,
+            expRefCajas,
+            expRefTramites,
+            expOwnCount: 0,
+            expOwnCajas: 0,
+            saldoTeorico,
+            diff,
+            causaDiff,
+            causaDiffDesc,
+          });
+        } else {
+          // COTE ya existe, acumular ingreso
+          const existing = cotesMap.get(cote)!;
+          existing.ingresoCajas += dep.cantidadEnvases || 0;
+          existing.ingresoKg += dep.pesoNeto || 0;
+          if (dep.corte && !existing.ingresoCortes.includes(dep.corte)) existing.ingresoCortes.push(dep.corte);
+          if (dep.denominacionMercaderia && !existing.ingresoDenoms.includes(dep.denominacionMercaderia)) existing.ingresoDenoms.push(dep.denominacionMercaderia);
+          if (dep.nroTramite && !existing.ingresoTramites.includes(dep.nroTramite)) existing.ingresoTramites.push(dep.nroTramite);
+          if (dep.fechaEmitidoCote && !existing.ingresoFechas.includes(dep.fechaEmitidoCote)) existing.ingresoFechas.push(dep.fechaEmitidoCote);
+          existing.saldoTeorico = existing.ingresoCajas - existing.expRefCajas;
+          existing.diff = existing.stockCajas > 0 ? existing.stockCajas - existing.saldoTeorico : null;
         }
-        setData(d);
       }
+
+      // También agregar COTEs que solo están en exportaciones (sin depósito)
+      for (const [cote, exps] of expByCote) {
+        if (cotesMap.has(cote)) continue;
+        const expRefCajas = exps.reduce((s, e) => s + (e.cantidadEnvases || 0), 0);
+        const expRefTramites = exps.map(e => e.nroTramite).filter(Boolean) as number[];
+        cotesMap.set(cote, {
+          cote,
+          tipo: 'EXP',
+          isRetorno: false,
+          estado: 'SIN_INGRESO',
+          stockPallets: 0,
+          stockCajas: 0,
+          stockKg: 0,
+          stockProductos: [],
+          stockContenedores: [],
+          ingresoCajas: 0,
+          ingresoKg: 0,
+          ingresoFechas: [],
+          ingresoCortes: [],
+          ingresoDenoms: [],
+          ingresoTramites: [],
+          expRefCount: exps.length,
+          expRefCajas,
+          expRefTramites,
+          expOwnCount: 0,
+          expOwnCajas: 0,
+          saldoTeorico: -expRefCajas,
+          diff: null,
+          causaDiff: 'D',
+          causaDiffDesc: 'Sin ingreso a depósito',
+        });
+      }
+
+      const d: TrazabilidadData = {
+        fecha: new Date().toISOString(),
+        cliente: 'CALIRAL',
+        pallets: palletsData,
+        cotes: Array.from(cotesMap.values()).sort((a, b) => a.cote.localeCompare(b.cote)),
+      };
+      setData(d);
     } catch (err) { console.error('Error loading data:', err); }
     setLoading(false);
   }, []);
