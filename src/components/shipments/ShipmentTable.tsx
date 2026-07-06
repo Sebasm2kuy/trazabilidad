@@ -924,13 +924,14 @@ export default function ShipmentTable() {
             <thead><tr className="border-b bg-slate-50 text-left text-xs text-slate-500 uppercase">
               <th className="px-3 py-3 w-8"></th>
               <th className="px-3 py-3">Trámite</th><th className="px-3 py-3">Fecha</th><th className="px-3 py-3">COTE</th>
+              <th className="px-3 py-3 hidden xl:table-cell">Estab. Certificador</th>
               <th className="px-3 py-3">Destino</th><th className="px-3 py-3 hidden lg:table-cell">País</th>
               <th className="px-3 py-3 hidden md:table-cell">Producto</th><th className="px-3 py-3 hidden xl:table-cell">Corte</th>
               <th className="px-3 py-3 text-right">Envases</th><th className="px-3 py-3 text-right">Peso Neto</th>
               <th className="px-3 py-3 w-12"></th>
             </tr></thead>
             <tbody>
-              {data.length === 0 ? <tr><td colSpan={11} className="text-center py-10 text-slate-400">No se encontraron registros</td></tr>
+              {data.length === 0 ? <tr><td colSpan={12} className="text-center py-10 text-slate-400">No se encontraron registros</td></tr>
                 : data.map(s => {
                   const isEdited = !!edits[s.id];
                   const isNew = s.id.startsWith('new_') || s.id.startsWith('manual_');
@@ -944,6 +945,7 @@ export default function ShipmentTable() {
                       <td className="px-3 py-2.5 font-mono text-xs">{s.nroTramite}</td>
                       <td className="px-3 py-2.5 text-xs">{fd(s.fechaTramite)}</td>
                       <td className="px-3 py-2.5 text-xs font-medium text-emerald-700">{s.nroCote || '-'}</td>
+                      <td className="px-3 py-2.5 text-xs hidden xl:table-cell max-w-[180px] truncate" title={s.nombreEstablecimientoCertif || ''}>{s.nombreEstablecimientoCertif || '-'}</td>
                       <td className="px-3 py-2.5 text-xs">{s.nombreEstablecimientoDestino || '-'}</td>
                       <td className="px-3 py-2.5 text-xs hidden lg:table-cell">{s.paisDestino?.substring(0, 30) || '-'}</td>
                       <td className="px-3 py-2.5 text-xs hidden md:table-cell max-w-[180px] truncate">{s.denominacionMercaderia || '-'}</td>
