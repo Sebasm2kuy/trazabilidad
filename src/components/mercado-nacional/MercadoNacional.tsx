@@ -185,14 +185,31 @@ function VBarChart({
   color?: string;
   compareTo?: { label: string; value: number }[];
 }) {
-  const dataMax = Math.max(...data.map(d => d.value), 1);
-  const compMax = compareTo && compareTo.length > 0
-    ? Math.max(...compareTo.map(d => d.value), 1)
+  // Si hay más de 18 puntos, recortar a los últimos 18 con datos
+  // para evitar barras invisibles por exceso de columnas.
+  let displayData = data;
+  let displayComp = compareTo;
+  if (data.length > 18) {
+    // Buscar el índice del primer punto con valor > 0
+    const firstNonZero = data.findIndex(d => d.value > 0);
+    const startIdx = Math.max(0, firstNonZero >= 0 ? firstNonZero : 0);
+    const sliced = data.slice(startIdx);
+    if (sliced.length > 18) {
+      const cutFrom = sliced.length - 18;
+      displayData = sliced.slice(cutFrom);
+      if (compareTo) displayComp = compareTo.slice(startIdx + cutFrom);
+    } else {
+      displayData = sliced;
+      if (compareTo) displayComp = compareTo?.slice(startIdx) || [];
+    }
+  }
+
+  const dataMax = Math.max(...displayData.map(d => d.value), 1);
+  const compMax = displayComp && displayComp.length > 0
+    ? Math.max(...displayComp.map(d => d.value), 1)
     : 1;
   // Si la relación entre máximos es > 5x, usamos escala dual.
-  const dualAxis = Boolean(compareTo) && (compMax / dataMax > 5 || dataMax / compMax > 5);
-  // En modo dual, cada barra se normaliza contra su propio máximo.
-  // En modo simple, se usa el máximo global.
+  const dualAxis = Boolean(displayComp) && (compMax / dataMax > 5 || dataMax / compMax > 5);
   const globalMax = Math.max(dataMax, compMax, 1);
 
   return (
@@ -209,28 +226,30 @@ function VBarChart({
           </span>
         </div>
       )}
-      <div className="flex items-end gap-1.5 sm:gap-2 h-40 sm:h-52">
-        {data.map((d, i) => {
-          const compVal = compareTo?.[i]?.value || 0;
+      <div className="flex items-end gap-1 sm:gap-1.5 h-40 sm:h-52">
+        {displayData.map((d, i) => {
+          const compVal = displayComp?.[i]?.value || 0;
           // En modo dual cada uno usa su propio max. En simple, globalMax.
           const h = dualAxis ? (d.value / dataMax) * 100 : (d.value / globalMax) * 100;
           const compH = dualAxis ? (compVal / compMax) * 100 : (compVal / globalMax) * 100;
+          // Altura mínima visible: si hay valor > 0, al menos 8% para que se vea
+          const minH = 8;
           return (
             <div key={i} className="flex-1 flex flex-col items-center gap-1 group min-w-0">
               <span className="text-[9px] font-mono text-slate-600 dark:text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
                 {fmt(d.value)}
               </span>
               <div className="w-full flex-1 flex items-end gap-0.5 justify-center">
-                {compareTo && (
+                {displayComp && (
                   <div
                     className="w-1.5 sm:w-2 rounded-t transition-all duration-500"
-                    style={{ height: `${Math.max(compH, compVal > 0 ? 2 : 0)}%`, backgroundColor: '#cbd5e1' }}
+                    style={{ height: `${Math.max(compH, compVal > 0 ? minH : 0)}%`, backgroundColor: '#cbd5e1' }}
                     title={`Mercado total: ${fmt(compVal)}${dualAxis ? ` (máx: ${fmt(compMax)})` : ''}`}
                   />
                 )}
                 <div
                   className="w-3 sm:w-4 rounded-t transition-all duration-500 hover:opacity-80"
-                  style={{ height: `${Math.max(h, d.value > 0 ? 2 : 0)}%`, backgroundColor: color }}
+                  style={{ height: `${Math.max(h, d.value > 0 ? minH : 0)}%`, backgroundColor: color }}
                   title={`${d.label}: ${fmt(d.value)}${dualAxis ? ` (máx empresa: ${fmt(dataMax)})` : ''}`}
                 />
               </div>
@@ -239,7 +258,7 @@ function VBarChart({
           );
         })}
       </div>
-      {compareTo && (
+      {displayComp && (
         <div className="flex gap-4 justify-center">
           <span className="text-[10px] flex items-center gap-1">
             <span className="w-3 h-3 rounded" style={{ backgroundColor: color }} /> Empresa
