@@ -3,9 +3,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAppStore } from '@/store/useAppStore';
 import {
-  LayoutDashboard, Warehouse, Ship, ArrowLeftRight, Search, GitCompare, BarChart3,
+  Warehouse, Ship, ArrowLeftRight, Search, GitCompare,
   Download, PlusCircle, Settings, Cloud, CloudOff, Menu, Globe, Sparkles, Activity,
-  Radio, Home, Briefcase, Bot, FolderCog,
+  Radio, Home, Briefcase, Bot,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { isConfigured, getLastSync } from '@/lib/googleSheets';
@@ -14,10 +14,10 @@ import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { useIsMobile } from '@/hooks/use-mobile';
 
 type TabId =
-  | 'operacion' | 'copilot' | 'nirea' | 'centro' | 'command-center'
-  | 'dashboard' | 'depositos' | 'exportaciones' | 'cruce-caliral' | 'cruces-x-cote'
+  | 'operacion' | 'copilot' | 'nirea' | 'centro'
+  | 'depositos' | 'exportaciones' | 'cruce-caliral' | 'cruces-x-cote'
   | 'mercado-nacional' | 'hallazgos' | 'trazabilidad-explorer' | 'trazabilidad'
-  | 'comparativa' | 'analiticas' | 'importar' | 'nuevo';
+  | 'importar' | 'nuevo';
 
 interface NavItem {
   id: TabId;
@@ -37,7 +37,6 @@ const NAV_SECTIONS: NavSection[] = [
       { id: 'operacion', label: 'Inicio', icon: Home },
       { id: 'trazabilidad-explorer', label: 'Trazabilidad', icon: Search },
       { id: 'trazabilidad', label: 'Búsqueda COTE', icon: Search },
-      { id: 'command-center', label: 'Digital Twin', icon: Radio },
     ],
   },
   {
@@ -46,7 +45,6 @@ const NAV_SECTIONS: NavSection[] = [
       { id: 'nirea', label: 'Clientes Estratégicos', icon: Briefcase },
       { id: 'mercado-nacional', label: 'Mercado Nacional', icon: Globe },
       { id: 'hallazgos', label: 'Hallazgos', icon: Sparkles },
-      { id: 'comparativa', label: 'Comparativa', icon: GitCompare },
     ],
   },
   {
@@ -65,8 +63,6 @@ const NAV_SECTIONS: NavSection[] = [
       { id: 'nuevo', label: 'Nuevo Registro', icon: PlusCircle },
       { id: 'importar', label: 'Importar / Exportar', icon: Download },
       { id: 'centro', label: 'Centro de Inteligencia', icon: Activity },
-      { id: 'dashboard', label: 'Dashboard legacy', icon: LayoutDashboard },
-      { id: 'analiticas', label: 'Analíticas', icon: BarChart3 },
     ],
   },
 ];

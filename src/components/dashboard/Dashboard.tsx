@@ -376,8 +376,8 @@ export default function Dashboard() {
     { label: 'Total Envíos', value: fmt(d.total), icon: Package, color: 'text-emerald-600', bg: 'bg-emerald-50 dark:bg-emerald-950', tab: 'depositos' as Tab, filters: {} },
     { label: 'Peso Neto Total', value: fmt(d.pesoNetoTotal) + ' kg', icon: Weight, color: 'text-amber-600', bg: 'bg-amber-50 dark:bg-amber-950', tab: 'depositos' as Tab, filters: {} },
     { label: 'Total Envases', value: fmt(d.envasesTotal), icon: Box, color: 'text-sky-600', bg: 'bg-sky-50 dark:bg-sky-950', tab: 'depositos' as Tab, filters: {} },
-    { label: 'Países Destino', value: String(d.uniquePaisCount), icon: Globe, color: 'text-violet-600', bg: 'bg-violet-50 dark:bg-violet-950', tab: 'comparativa' as Tab, filters: {} },
-    { label: 'Productos Únicos', value: String(d.uniqueProductoCount), icon: Tag, color: 'text-rose-600', bg: 'bg-rose-50 dark:bg-rose-950', tab: 'comparativa' as Tab, filters: {} },
+    { label: 'Países Destino', value: String(d.uniquePaisCount), icon: Globe, color: 'text-violet-600', bg: 'bg-violet-50 dark:bg-violet-950', tab: 'mercado-nacional' as Tab, filters: {} },
+    { label: 'Productos Únicos', value: String(d.uniqueProductoCount), icon: Tag, color: 'text-rose-600', bg: 'bg-rose-50 dark:bg-rose-950', tab: 'mercado-nacional' as Tab, filters: {} },
     { label: 'Último Envío', value: fd(d.lastDate), icon: CalendarDays, color: 'text-teal-600', bg: 'bg-teal-50 dark:bg-teal-950', tab: 'trazabilidad' as Tab, filters: {} },
   ];
 
@@ -670,7 +670,7 @@ export default function Dashboard() {
                   <TooltipTrigger asChild>
                     <div
                       className="cursor-pointer group/bar hover:opacity-90 transition-all duration-200"
-                      onClick={() => navigateAndFilter('comparativa', { producto: prod.name })}
+                      onClick={() => navigateAndFilter('mercado-nacional', { producto: prod.name })}
                     >
                       <div className="flex items-center justify-between mb-1">
                         <span className="text-sm font-medium text-slate-700 dark:text-slate-200 truncate max-w-[60%] group-hover/bar:text-sky-700 dark:group-hover/bar:text-sky-400 transition-colors">

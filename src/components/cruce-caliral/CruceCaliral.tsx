@@ -2574,13 +2574,13 @@ export default function CruceCaliral() {
             <span className="ml-auto text-[9px] text-red-500 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">Ver diff →</span>
           </CardContent>
         </Card>
-        <Card className="cursor-pointer hover:shadow-md hover:scale-[1.02] transition-all duration-200 group" onClick={() => { setActiveTab('comparativa'); }}>
+        <Card className="cursor-pointer hover:shadow-md hover:scale-[1.02] transition-all duration-200 group" onClick={() => { setActiveTab('mercado-nacional'); }}>
           <CardContent className="p-4 flex items-center gap-3">
             <div className="p-3 rounded-xl bg-violet-50"><span className="text-sm font-bold text-violet-600">%</span></div>
             <div><p className="text-[10px] text-slate-500 uppercase">Cobertura cruce</p><p className="text-lg font-bold">
               {stats.totalIngresos > 0 ? ((stats.cotesVinculados / stats.totalIngresos) * 100).toFixed(0) : 0}%
             </p><p className="text-[10px] text-slate-400">COTEs vinculados</p></div>
-            <span className="ml-auto text-[9px] text-violet-500 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">Comparativa →</span>
+            <span className="ml-auto text-[9px] text-violet-500 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">Mercado →</span>
           </CardContent>
         </Card>
       </div>
