@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
-import { Search, X, ChevronLeft, ChevronRight, Eye, FileCheck, Pencil, Save, RotateCcw, CheckCircle2, Plus, Trash2, Download, Upload, Loader2, Check, Globe, Sparkles, ClipboardPaste, Package, FileText } from 'lucide-react';
+import { Search, X, ChevronLeft, ChevronRight, Eye, FileCheck, Pencil, Save, RotateCcw, CheckCircle2, Plus, Trash2, Download, Upload, Loader2, Check, Globe, Sparkles, ClipboardPaste, Package, FileText, Square, CheckSquare } from 'lucide-react';
 import { fetchShipments, fetchAnalytics, getCotes, dataUrl } from '@/lib/staticData';
 import { parseEnviosExcel } from '@/lib/parseExcelRegistro';
 import { parseCotePdf, coteToShipmentRecord } from '@/lib/parseCotePdf';
@@ -224,6 +224,200 @@ function invalidateDepCache() {
   depCache.data = [];
 }
 
+// ============================================================
+// MultiSelectFilter — Filtro multi-valor con checkboxes (estilo Excel)
+// ============================================================
+// El valor se almacena en el store como string separado por '|'.
+// Esto permite mantener compatibilidad con navigateAndFilter y clearFilters.
+// La comparación al filtrar es case-insensitive.
+// ============================================================
+
+const MULTI_SEP = '|';
+
+function parseMulti(value: string): string[] {
+  return value ? value.split(MULTI_SEP).filter(Boolean) : [];
+}
+
+function toggleMulti(value: string, option: string): string {
+  const current = parseMulti(value);
+  // Comparación case-insensitive para evitar duplicados por mayúsculas/minúsculas
+  const idx = current.findIndex(c => c.toLowerCase() === option.toLowerCase());
+  let next: string[];
+  if (idx >= 0) {
+    next = current.filter((_, i) => i !== idx);
+  } else {
+    next = [...current, option];
+  }
+  return next.join(MULTI_SEP);
+}
+
+function MultiSelectFilter({
+  label,
+  options,
+  selected, // string con valores separados por '|'
+  onChange,  // (newValue: string) => void
+  search: initialSearch = '',
+  width = '200px',
+  dropdownWidth = '260px',
+}: {
+  label: string;
+  options: string[];
+  selected: string;
+  onChange: (value: string) => void;
+  search?: string;
+  width?: string;
+  dropdownWidth?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState(initialSearch);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    if (open) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) setSearch('');
+  }, [open]);
+
+  const selectedList = parseMulti(selected);
+  const selectedLower = new Set(selectedList.map(s => s.toLowerCase()));
+
+  const filteredOptions = options.filter(o =>
+    !search || o.toLowerCase().includes(search.toLowerCase())
+  );
+
+  // Opciones únicas normalizadas (para no mostrar duplicados por case)
+  const seen = new Set<string>();
+  const uniqueOptions = options.filter(o => {
+    const k = o.toLowerCase();
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+
+  const labelDisplay = selectedList.length === 0
+    ? label
+    : selectedList.length === 1
+      ? selectedList[0]
+      : `${label} (${selectedList.length})`;
+
+  return (
+    <div className="relative" ref={containerRef}>
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className={`flex h-9 items-center justify-between rounded-md border px-3 py-2 text-sm whitespace-nowrap truncate ${selectedList.length > 0 ? 'border-emerald-500 bg-emerald-50 text-emerald-700 font-medium' : 'border-input bg-background text-muted-foreground'}`}
+        style={{ width }}
+      >
+        <span className="truncate">{labelDisplay}</span>
+        {selectedList.length > 0 ? (
+          <X
+            className="h-3.5 w-3.5 shrink-0 ml-1 text-emerald-600 hover:text-red-500"
+            onClick={e => { e.stopPropagation(); onChange(''); setOpen(false); }}
+          />
+        ) : (
+          <span className="text-slate-400 text-xs ml-1">▾</span>
+        )}
+      </button>
+      {open && (
+        <div
+          className="absolute z-50 top-[100%] left-0 mt-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg shadow-xl"
+          style={{ width: dropdownWidth }}
+        >
+          {/* Buscador */}
+          <div className="p-2 border-b border-slate-100 dark:border-slate-800">
+            <input
+              type="text"
+              placeholder={`Buscar ${label.toLowerCase()}...`}
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="w-full h-8 text-sm border border-slate-200 dark:border-slate-800 rounded px-2 focus:outline-none focus:ring-1 focus:ring-emerald-500 bg-white dark:bg-slate-950"
+              autoFocus
+            />
+          </div>
+
+          {/* Acciones rápidas */}
+          <div className="flex items-center justify-between px-2 py-1.5 border-b border-slate-100 dark:border-slate-800 text-[11px]">
+            <button
+              type="button"
+              onClick={() => onChange(uniqueOptions.filter(o => !search || o.toLowerCase().includes(search.toLowerCase())).join(MULTI_SEP))}
+              className="text-emerald-600 hover:text-emerald-700 font-medium"
+            >
+              Seleccionar todo
+            </button>
+            <button
+              type="button"
+              onClick={() => onChange('')}
+              className="text-slate-500 hover:text-slate-700"
+            >
+              Limpiar
+            </button>
+          </div>
+
+          {/* Lista con checkboxes */}
+          <div className="max-h-[220px] overflow-y-auto">
+            {filteredOptions.length === 0 ? (
+              <p className="text-sm text-slate-400 p-3 text-center">Sin resultados</p>
+            ) : (
+              filteredOptions.map(opt => {
+                const checked = selectedLower.has(opt.toLowerCase());
+                return (
+                  <button
+                    key={opt}
+                    type="button"
+                    onClick={() => onChange(toggleMulti(selected, opt))}
+                    className={`w-full flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors text-left ${checked ? 'bg-emerald-50/60 dark:bg-emerald-950/20' : ''}`}
+                  >
+                    {checked
+                      ? <CheckSquare className="h-4 w-4 text-emerald-600 shrink-0" />
+                      : <Square className="h-4 w-4 text-slate-300 dark:text-slate-600 shrink-0" />
+                    }
+                    <span className={`truncate ${checked ? 'text-emerald-700 dark:text-emerald-300 font-medium' : 'text-slate-700 dark:text-slate-200'}`}>
+                      {opt}
+                    </span>
+                  </button>
+                );
+              })
+            )}
+            {/* Opción para usar texto personalizado si no existe */}
+            {search && !uniqueOptions.some(o => o.toLowerCase() === search.toLowerCase()) && (
+              <button
+                type="button"
+                onClick={() => { onChange(toggleMulti(selected, search)); setSearch(''); }}
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-blue-50 dark:hover:bg-blue-950/30 text-blue-600 text-left border-t border-slate-100 dark:border-slate-800"
+              >
+                <Plus className="h-3.5 w-3.5 shrink-0" />
+                <span className="truncate">Usar: "{search}"</span>
+              </button>
+            )}
+          </div>
+
+          {/* Footer */}
+          <div className="p-2 border-t border-slate-100 dark:border-slate-800 text-[11px] text-slate-500 flex items-center justify-between">
+            <span>{selectedList.length} seleccionado{selectedList.length !== 1 ? 's' : ''}</span>
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              className="text-emerald-600 hover:text-emerald-700 font-medium"
+            >
+              Aplicar
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function ShipmentTable() {
   const { search, setSearch, filters, setFilter, clearFilters } = useAppStore();
   const [data, setData] = useState<Shipment[]>([]);
@@ -245,17 +439,8 @@ export default function ShipmentTable() {
   const [cotes, setCotes] = useState<string[]>([]);
   const [coteOpen, setCoteOpen] = useState(false);
   const [coteSearch, setCoteSearch] = useState('');
-  const [paisOpen, setPaisOpen] = useState(false);
-  const [paisSearch, setPaisSearch] = useState('');
-  const [productoOpen, setProductoOpen] = useState(false);
-  const [productoSearch, setProductoSearch] = useState('');
-  const [destinoOpen, setDestinoOpen] = useState(false);
-  const [destinoSearch, setDestinoSearch] = useState('');
   const coteInputRef = useRef<HTMLInputElement>(null);
   const coteDropdownRef = useRef<HTMLDivElement>(null);
-  const paisDropdownRef = useRef<HTMLDivElement>(null);
-  const productoDropdownRef = useRef<HTMLDivElement>(null);
-  const destinoDropdownRef = useRef<HTMLDivElement>(null);
   const [importing, setImporting] = useState(false);
   const [pdfLoading, setPdfLoading] = useState(false);
   const [pdfError, setPdfError] = useState<string | null>(null);
@@ -326,8 +511,9 @@ export default function ShipmentTable() {
       let allData = applyEdits([...depCache.data, ...newRecords], edits);
       allData = allData.filter(s => !deletedIds.has(s.id));
 
-      // Apply filters
+      // Apply filters (soporte multi-valor separado por '|', comparación case-insensitive)
       const { pais, producto, destino, tipo, cote, fechaDesde, fechaHasta } = filters;
+      const splitVals = (s: string) => s ? s.split('|').filter(Boolean) : [];
       if (search) {
         const s = search.toLowerCase();
         const num = Number(search);
@@ -341,9 +527,12 @@ export default function ShipmentTable() {
           sh.precinto1?.toLowerCase().includes(s)
         );
       }
-      if (pais) allData = allData.filter(sh => sh.paisDestino?.includes(pais));
-      if (producto) allData = allData.filter(sh => sh.denominacionMercaderia?.includes(producto));
-      if (destino) allData = allData.filter(sh => sh.nombreEstablecimientoDestino?.includes(destino));
+      const paisesSel = splitVals(pais).map(v => v.toLowerCase());
+      const productosSel = splitVals(producto).map(v => v.toLowerCase());
+      const destinosSel = splitVals(destino).map(v => v.toLowerCase());
+      if (paisesSel.length) allData = allData.filter(sh => sh.paisDestino && paisesSel.includes(sh.paisDestino.toLowerCase()));
+      if (productosSel.length) allData = allData.filter(sh => sh.denominacionMercaderia && productosSel.includes(sh.denominacionMercaderia.toLowerCase()));
+      if (destinosSel.length) allData = allData.filter(sh => sh.nombreEstablecimientoDestino && destinosSel.includes(sh.nombreEstablecimientoDestino.toLowerCase()));
       if (tipo) allData = allData.filter(sh => sh.tipo === tipo);
       if (cote) allData = allData.filter(sh => sh.nroCote === cote);
       if (fechaDesde) allData = allData.filter(sh => sh.fechaTramite >= new Date(fechaDesde).toISOString());
@@ -362,14 +551,11 @@ export default function ShipmentTable() {
 
   useEffect(() => { setPage(1); }, [search, filters]);
 
-  // Click-outside handler for all dropdowns
+  // Click-outside handler for COTE dropdown (los otros usan MultiSelectFilter que tiene su propio handler)
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
       const target = e.target as Node;
       if (coteDropdownRef.current && !coteDropdownRef.current.contains(target)) setCoteOpen(false);
-      if (paisDropdownRef.current && !paisDropdownRef.current.contains(target)) setPaisOpen(false);
-      if (productoDropdownRef.current && !productoDropdownRef.current.contains(target)) setProductoOpen(false);
-      if (destinoDropdownRef.current && !destinoDropdownRef.current.contains(target)) setDestinoOpen(false);
     }
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
@@ -850,90 +1036,30 @@ export default function ShipmentTable() {
               </div>
             )}
           </div>
-          <div className="relative" ref={paisDropdownRef}>
-            <button
-              type="button"
-              onClick={() => { setPaisOpen(!paisOpen); setPaisSearch(''); }}
-              className={`flex h-9 w-[200px] items-center justify-between rounded-md border px-3 py-2 text-sm whitespace-nowrap truncate ${filters.pais ? 'border-emerald-500 bg-emerald-50 text-emerald-700 font-medium' : 'border-input bg-background text-muted-foreground'}`}
-            >
-              <span className="truncate">{filters.pais || 'País Destino'}</span>
-              <X className={`h-3.5 w-3.5 shrink-0 ml-1 ${filters.pais ? 'text-emerald-600 hover:text-red-500' : 'text-slate-400'}`} onClick={e => { e.stopPropagation(); setFilter('pais', ''); setPaisOpen(false); }} />
-            </button>
-            {paisOpen && (
-              <div className="absolute z-50 top-[100%] left-0 mt-1 w-[240px] bg-white border rounded-lg shadow-xl">
-                <div className="p-2 border-b">
-                  <input type="text" placeholder="Buscar país..." value={paisSearch} onChange={e => setPaisSearch(e.target.value)}
-                    className="w-full h-8 text-sm border rounded px-2 focus:outline-none focus:ring-1 focus:ring-emerald-500" autoFocus />
-                </div>
-                <div className="max-h-[200px] overflow-y-auto">
-                  {options.paises.filter(p => !paisSearch || p.toLowerCase().includes(paisSearch.toLowerCase())).map(p => (
-                    <button key={p} type="button" onClick={() => { setFilter('pais', filters.pais === p ? '' : p); setPaisOpen(false); setPaisSearch(''); }}
-                      className={`w-full text-left px-3 py-1.5 text-sm hover:bg-accent transition-colors ${filters.pais === p ? 'bg-emerald-50 text-emerald-700 font-medium' : ''}`}>{p}</button>
-                  ))}
-                  {paisSearch && !options.paises.some(p => p.toLowerCase().includes(paisSearch.toLowerCase())) && (
-                    <button type="button" onClick={() => { setFilter('pais', paisSearch); setPaisOpen(false); setPaisSearch(''); }}
-                      className="w-full text-left px-3 py-1.5 text-sm hover:bg-accent text-blue-600">Usar: "{paisSearch}"</button>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-          <div className="relative" ref={productoDropdownRef}>
-            <button
-              type="button"
-              onClick={() => { setProductoOpen(!productoOpen); setProductoSearch(''); }}
-              className={`flex h-9 w-[220px] items-center justify-between rounded-md border px-3 py-2 text-sm whitespace-nowrap truncate ${filters.producto ? 'border-emerald-500 bg-emerald-50 text-emerald-700 font-medium' : 'border-input bg-background text-muted-foreground'}`}
-            >
-              <span className="truncate">{filters.producto || 'Producto'}</span>
-              <X className={`h-3.5 w-3.5 shrink-0 ml-1 ${filters.producto ? 'text-emerald-600 hover:text-red-500' : 'text-slate-400'}`} onClick={e => { e.stopPropagation(); setFilter('producto', ''); setProductoOpen(false); }} />
-            </button>
-            {productoOpen && (
-              <div className="absolute z-50 top-[100%] left-0 mt-1 w-[260px] bg-white border rounded-lg shadow-xl">
-                <div className="p-2 border-b">
-                  <input type="text" placeholder="Buscar producto..." value={productoSearch} onChange={e => setProductoSearch(e.target.value)}
-                    className="w-full h-8 text-sm border rounded px-2 focus:outline-none focus:ring-1 focus:ring-emerald-500" autoFocus />
-                </div>
-                <div className="max-h-[200px] overflow-y-auto">
-                  {options.productos.filter(p => !productoSearch || p.toLowerCase().includes(productoSearch.toLowerCase())).map(p => (
-                    <button key={p} type="button" onClick={() => { setFilter('producto', filters.producto === p ? '' : p); setProductoOpen(false); setProductoSearch(''); }}
-                      className={`w-full text-left px-3 py-1.5 text-sm hover:bg-accent transition-colors truncate ${filters.producto === p ? 'bg-emerald-50 text-emerald-700 font-medium' : ''}`}>{p}</button>
-                  ))}
-                  {productoSearch && !options.productos.some(p => p.toLowerCase().includes(productoSearch.toLowerCase())) && (
-                    <button type="button" onClick={() => { setFilter('producto', productoSearch); setProductoOpen(false); setProductoSearch(''); }}
-                      className="w-full text-left px-3 py-1.5 text-sm hover:bg-accent text-blue-600">Usar: "{productoSearch}"</button>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-          <div className="relative" ref={destinoDropdownRef}>
-            <button
-              type="button"
-              onClick={() => { setDestinoOpen(!destinoOpen); setDestinoSearch(''); }}
-              className={`flex h-9 w-[200px] items-center justify-between rounded-md border px-3 py-2 text-sm whitespace-nowrap truncate ${filters.destino ? 'border-emerald-500 bg-emerald-50 text-emerald-700 font-medium' : 'border-input bg-background text-muted-foreground'}`}
-            >
-              <span className="truncate">{filters.destino || 'Destino'}</span>
-              <X className={`h-3.5 w-3.5 shrink-0 ml-1 ${filters.destino ? 'text-emerald-600 hover:text-red-500' : 'text-slate-400'}`} onClick={e => { e.stopPropagation(); setFilter('destino', ''); setDestinoOpen(false); }} />
-            </button>
-            {destinoOpen && (
-              <div className="absolute z-50 top-[100%] left-0 mt-1 w-[240px] bg-white border rounded-lg shadow-xl">
-                <div className="p-2 border-b">
-                  <input type="text" placeholder="Buscar destino..." value={destinoSearch} onChange={e => setDestinoSearch(e.target.value)}
-                    className="w-full h-8 text-sm border rounded px-2 focus:outline-none focus:ring-1 focus:ring-emerald-500" autoFocus />
-                </div>
-                <div className="max-h-[200px] overflow-y-auto">
-                  {options.destinos.filter(d => !destinoSearch || d.toLowerCase().includes(destinoSearch.toLowerCase())).map(d => (
-                    <button key={d} type="button" onClick={() => { setFilter('destino', filters.destino === d ? '' : d); setDestinoOpen(false); setDestinoSearch(''); }}
-                      className={`w-full text-left px-3 py-1.5 text-sm hover:bg-accent transition-colors ${filters.destino === d ? 'bg-emerald-50 text-emerald-700 font-medium' : ''}`}>{d}</button>
-                  ))}
-                  {destinoSearch && !options.destinos.some(d => d.toLowerCase().includes(destinoSearch.toLowerCase())) && (
-                    <button type="button" onClick={() => { setFilter('destino', destinoSearch); setDestinoOpen(false); setDestinoSearch(''); }}
-                      className="w-full text-left px-3 py-1.5 text-sm hover:bg-accent text-blue-600">Usar: "{destinoSearch}"</button>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
+          <MultiSelectFilter
+            label="País Destino"
+            options={options.paises}
+            selected={filters.pais}
+            onChange={(v) => setFilter('pais', v)}
+            width="200px"
+            dropdownWidth="280px"
+          />
+          <MultiSelectFilter
+            label="Producto"
+            options={options.productos}
+            selected={filters.producto}
+            onChange={(v) => setFilter('producto', v)}
+            width="220px"
+            dropdownWidth="300px"
+          />
+          <MultiSelectFilter
+            label="Destino"
+            options={options.destinos}
+            selected={filters.destino}
+            onChange={(v) => setFilter('destino', v)}
+            width="200px"
+            dropdownWidth="300px"
+          />
           <Input type="date" value={filters.fechaDesde} onChange={e => setFilter('fechaDesde', e.target.value)} className="w-[160px]" />
           <Input type="date" value={filters.fechaHasta} onChange={e => setFilter('fechaHasta', e.target.value)} className="w-[160px]" />
         </div>
