@@ -40,12 +40,13 @@ export default function SettingsSheet({ open, onOpenChange }: SettingsSheetProps
   const [lastSync, setLastSync] = useState('');
 
   const [pwExists, setPwExists] = useState(false);
-  const [pwStep, setPwStep] = useState<'idle' | 'create' | 'verify' | 'confirm_reset'>('idle');
+  const [pwStep, setPwStep] = useState<'idle' | 'create' | 'verify' | 'confirm_reset' | 'force_reset'>('idle');
   const [pwInput, setPwInput] = useState('');
   const [pwConfirm, setPwConfirm] = useState('');
   const [showPw, setShowPw] = useState(false);
   const [showPwConfirm, setShowPwConfirm] = useState(false);
   const [resetting, setResetting] = useState(false);
+  const [forceConfirmText, setForceConfirmText] = useState('');
 
   useEffect(() => {
     if (open) {
@@ -160,39 +161,130 @@ export default function SettingsSheet({ open, onOpenChange }: SettingsSheetProps
     // However, the Firebase DELETE request is unauthenticated — anyone with the URL can delete data.
     // If authentication is needed, consider using Firebase Security Rules or a backend proxy.
     setResetting(true);
+    toast.info('Iniciando restablecimiento…');
     try {
+      // 1. Limpiar localStorage primero (siempre funciona)
+      let clearedCount = 0;
       for (const key of ALL_DATA_KEYS) {
-        localStorage.removeItem(key);
+        if (localStorage.getItem(key) !== null) {
+          localStorage.removeItem(key);
+          clearedCount++;
+        }
       }
+      // Limpiar también TODAS las claves relacionadas con trazabilidad (catch-all)
+      const allKeys = Object.keys(localStorage);
+      let extraCleared = 0;
+      for (const k of allKeys) {
+        if (k.startsWith('trazabilidad_') || k.startsWith('cruce_caliral')) {
+          // No borrar la contraseña ni el salt (se borran aparte si es force_reset)
+          if (k !== 'trazabilidad_system_password' && k !== 'trazabilidad_pbkdf2_salt') {
+            localStorage.removeItem(k);
+            extraCleared++;
+          }
+        }
+      }
+      toast.success(`Local: ${clearedCount} claves principales + ${extraCleared} extra borradas`);
 
-      // Only clear remote Firebase data if Firebase is configured AND password has been verified
-      // (password verification is guaranteed by the pwStep flow: 'verify' → 'confirm_reset')
+      // 2. Intentar borrar Firebase con TIMEOUT de 10s (no bloquea si falla)
       if (gs.isConfigured()) {
         try {
           const fbUrl = gs.getSheetUrl();
           console.warn('[FactoryReset] Deleting remote Firebase data for:', fbUrl);
+          toast.info('Intentando borrar Firebase…');
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 10000);
           const response = await fetch(`${fbUrl}/.json`, {
             method: 'DELETE',
+            signal: controller.signal,
           });
+          clearTimeout(timeoutId);
           if (!response.ok) {
             console.error('[FactoryReset] Firebase DELETE failed:', response.status, response.statusText);
+            toast.warning(`Firebase: HTTP ${response.status} (local ya está borrado)`);
           } else {
             console.info('[FactoryReset] Firebase data deleted successfully');
+            toast.success('Firebase: datos borrados');
           }
-        } catch (fbErr) {
-          // Log the error but continue — local data is already cleared
-          console.error('[FactoryReset] Error deleting Firebase data:', fbErr);
+        } catch (fbErr: any) {
+          if (fbErr?.name === 'AbortError') {
+            console.error('[FactoryReset] Firebase DELETE timed out');
+            toast.warning('Firebase: timeout (local ya está borrado)');
+          } else {
+            console.error('[FactoryReset] Error deleting Firebase data:', fbErr);
+            toast.warning(`Firebase: ${fbErr?.message || 'error'} (local ya está borrado)`);
+          }
         }
+      } else {
+        toast.info('Firebase no configurado — solo se borra local');
       }
 
+      // 3. Forzar reload
       localStorage.setItem('trazabilidad_last_sync', new Date().toISOString());
       setPwStep('idle');
-      toast.success('Sistema restablecido. Recargá la página.');
+      toast.success('Sistema restablecido. Recargando…');
       onOpenChange(false);
       setTimeout(() => window.location.reload(), 1500);
     } catch (err) {
       console.error('[FactoryReset] Unexpected error:', err);
       toast.error('Error al restablecer: ' + (err as Error).message);
+      // Aún así intentar recargar
+      setTimeout(() => window.location.reload(), 2000);
+    } finally {
+      setResetting(false);
+    }
+  };
+
+  // Reset forzado sin contraseña: borra TODO incluyendo la propia contraseña.
+  // Requiere escribir "BORRAR" exacto para confirmar.
+  const handleForceReset = async () => {
+    if (forceConfirmText.trim().toUpperCase() !== 'BORRAR') {
+      toast.error('Escribí "BORRAR" para confirmar');
+      return;
+    }
+    setResetting(true);
+    toast.warning('Forzando restablecimiento sin contraseña…');
+    try {
+      // Borrar absolutamente todo lo que empiece con trazabilidad_ o cruce_caliral
+      const allKeys = Object.keys(localStorage);
+      let cleared = 0;
+      for (const k of allKeys) {
+        if (k.startsWith('trazabilidad_') || k.startsWith('cruce_caliral')) {
+          localStorage.removeItem(k);
+          cleared++;
+        }
+      }
+      toast.success(`Local: ${cleared} claves borradas (incluida contraseña)`);
+
+      // Firebase con timeout
+      if (gs.isConfigured()) {
+        try {
+          const fbUrl = gs.getSheetUrl();
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 10000);
+          const response = await fetch(`${fbUrl}/.json`, {
+            method: 'DELETE',
+            signal: controller.signal,
+          });
+          clearTimeout(timeoutId);
+          if (response.ok) {
+            toast.success('Firebase: datos borrados');
+          } else {
+            toast.warning(`Firebase: HTTP ${response.status}`);
+          }
+        } catch (fbErr: any) {
+          toast.warning(`Firebase: ${fbErr?.name === 'AbortError' ? 'timeout' : (fbErr?.message || 'error')}`);
+        }
+      }
+
+      setPwStep('idle');
+      setForceConfirmText('');
+      toast.success('Sistema restablecido. Recargando…');
+      onOpenChange(false);
+      setTimeout(() => window.location.reload(), 1500);
+    } catch (err) {
+      console.error('[ForceReset] error:', err);
+      toast.error('Error: ' + (err as Error).message);
+      setTimeout(() => window.location.reload(), 2000);
     } finally {
       setResetting(false);
     }
@@ -341,17 +433,33 @@ export default function SettingsSheet({ open, onOpenChange }: SettingsSheetProps
                       <Key className="h-3.5 w-3.5 mr-1.5" />
                       Crear contraseña y continuar
                     </Button>
+                    <button
+                      type="button"
+                      className="w-full text-[10px] text-slate-400 hover:text-red-500 underline mt-1"
+                      onClick={() => { setPwStep('force_reset'); setForceConfirmText(''); }}
+                    >
+                      Olvidé mi contraseña / Forzar reset
+                    </button>
                   </div>
                 ) : (
-                  <Button
-                    size="sm"
-                    variant="destructive"
-                    className="w-full"
-                    onClick={() => setPwStep('verify')}
-                  >
-                    <Lock className="h-3.5 w-3.5 mr-1.5" />
-                    Ingresar contraseña para restablecer
-                  </Button>
+                  <div className="space-y-2">
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      className="w-full"
+                      onClick={() => setPwStep('verify')}
+                    >
+                      <Lock className="h-3.5 w-3.5 mr-1.5" />
+                      Ingresar contraseña para restablecer
+                    </Button>
+                    <button
+                      type="button"
+                      className="w-full text-[10px] text-slate-400 hover:text-red-500 underline mt-1"
+                      onClick={() => { setPwStep('force_reset'); setForceConfirmText(''); }}
+                    >
+                      Olvidé mi contraseña / Forzar reset
+                    </button>
+                  </div>
                 )}
               </div>
             )}
@@ -483,6 +591,49 @@ export default function SettingsSheet({ open, onOpenChange }: SettingsSheetProps
                       <Trash2 className="h-3.5 w-3.5 mr-1.5" />
                     )}
                     {resetting ? 'Borrando...' : 'SI, borrar todo'}
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {pwStep === 'force_reset' && (
+              <div className="bg-red-100 border-2 border-red-400 rounded-lg p-4 space-y-3">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="h-5 w-5 text-red-600" />
+                  <p className="text-sm font-bold text-red-800">Reset Forzado (sin contraseña)</p>
+                </div>
+                <p className="text-xs text-red-700">
+                  Esto borra <b>ABSOLUTAMENTE TODO</b>: datos, edits, importaciones, stock, configuración,
+                  Firebase <b>y la propia contraseña</b>. El sistema quedará como recién instalado.
+                </p>
+                <p className="text-xs font-medium text-red-800 bg-white rounded p-2 border border-red-300">
+                  Para confirmar, escribí <code className="font-mono bg-red-100 px-1 rounded">BORRAR</code> en el campo de abajo:
+                </p>
+                <Input
+                  type="text"
+                  placeholder='Escribí "BORRAR"'
+                  value={forceConfirmText}
+                  onChange={e => setForceConfirmText(e.target.value)}
+                  className="text-sm font-mono"
+                  autoFocus
+                />
+                <div className="flex gap-2">
+                  <Button size="sm" variant="outline" className="flex-1" onClick={() => { setPwStep('idle'); setForceConfirmText(''); }}>
+                    Cancelar
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    className="flex-1"
+                    onClick={handleForceReset}
+                    disabled={resetting || forceConfirmText.trim().toUpperCase() !== 'BORRAR'}
+                  >
+                    {resetting ? (
+                      <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                    ) : (
+                      <Trash2 className="h-3.5 w-3.5 mr-1.5" />
+                    )}
+                    {resetting ? 'Borrando...' : 'FORZAR RESET'}
                   </Button>
                 </div>
               </div>
