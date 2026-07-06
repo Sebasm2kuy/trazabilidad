@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
-import { Search, X, ChevronLeft, ChevronRight, Eye, FileCheck, Download, Ship, Pencil, Save, RotateCcw, CheckCircle2, Plus, Trash2, Package, Upload, Loader2, Check } from 'lucide-react';
+import { Search, X, ChevronLeft, ChevronRight, Eye, FileCheck, Download, Ship, Pencil, Save, RotateCcw, CheckCircle2, Plus, Trash2, Package, Upload, Loader2, Check, ArrowDown, ArrowUp } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import type { Shipment, ExpRecord } from '@/lib/types';
 import { parseCotePdf, coteToExpRecord } from '@/lib/parseCotePdf';
@@ -243,6 +243,7 @@ export default function ExportacionesTable() {
   const [data, setData] = useState<ExpRecord[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
+  const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
   const [loading, setLoading] = useState(true);
   const [dataVersion, setDataVersion] = useState(0);
   const [detailOpen, setDetailOpen] = useState(false);
@@ -361,14 +362,21 @@ export default function ExportacionesTable() {
       if (fechaDesde) filtered = filtered.filter(sh => sh.fechaTramite >= new Date(fechaDesde).toISOString());
       if (fechaHasta) filtered = filtered.filter(sh => sh.fechaTramite <= new Date(fechaHasta + 'T23:59:59').toISOString());
 
+      // Sort by fechaTramite
+      filtered.sort((a, b) => {
+        const fa = a.fechaTramite || '';
+        const fb = b.fechaTramite || '';
+        return sortOrder === 'desc' ? fb.localeCompare(fa) : fa.localeCompare(fb);
+      });
+
       const t = filtered.length;
       setData(filtered.slice((page - 1) * EXP_PAGE_LIMIT, page * EXP_PAGE_LIMIT));
       setTotal(t);
     })();
     return () => { cancelled = true; };
-  }, [page, expFilters, EXP_PAGE_LIMIT, edits, deletedIds, dataVersion]);
+  }, [page, expFilters, EXP_PAGE_LIMIT, edits, deletedIds, dataVersion, sortOrder]);
 
-  useEffect(() => { setPage(1); }, [expFilters]);
+  useEffect(() => { setPage(1); }, [expFilters, sortOrder]);
 
   const handleOpenDetail = useCallback((s: ExpRecord) => {
     setSelected(s);
@@ -765,6 +773,16 @@ export default function ExportacionesTable() {
           
           <Button variant="outline" size="sm" onClick={() => setShowCharts(!showCharts)}>
             {showCharts ? 'Ocultar' : 'Ver'} Resumen
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5"
+            onClick={() => setSortOrder(o => o === 'desc' ? 'asc' : 'desc')}
+            title={sortOrder === 'desc' ? 'Ordenado por fecha descendente (más recientes primero)' : 'Ordenado por fecha ascendente (más antiguos primero)'}
+          >
+            {sortOrder === 'desc' ? <ArrowDown className="h-4 w-4" /> : <ArrowUp className="h-4 w-4" />}
+            Fecha: {sortOrder === 'desc' ? 'Recientes' : 'Antiguos'}
           </Button>
           <Button variant="outline" size="sm" onClick={async () => {
             const XLSX = await import('xlsx');
