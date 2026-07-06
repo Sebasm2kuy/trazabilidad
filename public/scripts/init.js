@@ -1,28 +1,36 @@
 // Trazabilidad init scripts - combined from layout.tsx inline scripts
 
-// Script 1: Reset logic - clear localStorage if ?reset=1 is in the URL
+// Script 1: Reset logic - clear ALL localStorage if ?reset= is in the URL
 (function () {
   try {
     // Silence Puter.js console messages
     window.__puter_quiet = true;
     var p = new URLSearchParams(window.location.search);
-    if (p.get('reset') === '1') {
-      var keys = [
-        'trazabilidad_new_records', 'trazabilidad_exp_edits', 'trazabilidad_exp_deleted',
-        'trazabilidad_exp_ingresos', 'trazabilidad_dep_edits', 'trazabilidad_dep_new_records',
-        'trazabilidad_dep_deleted', 'cruce_caliral_edits', 'trazabilidad_stock_data',
-        'trazabilidad_imported_batches', 'trazabilidad_recent_searches',
-        'trazabilidad_dep_imported', 'trazabilidad_exp_imported'
-      ];
-      keys.forEach(function (k) { localStorage.removeItem(k); });
+    if (p.has('reset')) {
+      // NUCLEAR: borrar absolutamente todo localStorage y sessionStorage
+      try { localStorage.clear(); } catch (e) { }
+      try { sessionStorage.clear(); } catch (e) { }
+      // Limpiar caches del navegador
+      if ('caches' in window) {
+        caches.keys().then(function (names) {
+          names.forEach(function (n) { caches.delete(n); });
+        }).catch(function () { });
+      }
+      // Desregistrar service workers
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(function (regs) {
+          regs.forEach(function (r) { r.unregister(); });
+        }).catch(function () { });
+      }
+      // Limpiar la URL y recargar de forma limpia
       window.history.replaceState({}, '', window.location.pathname);
-      window.location.reload();
+      window.location.reload(true);
     }
   } catch (e) { }
 })();
 
 // Script 2: Set global reset flag
-if (new URLSearchParams(window.location.search).get('reset') === '1') {
+if (new URLSearchParams(window.location.search).has('reset')) {
   window.__TRZ_RESET = 1;
 }
 

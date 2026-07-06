@@ -155,42 +155,24 @@ export default function SettingsSheet({ open, onOpenChange }: SettingsSheetProps
   };
 
   const handleFactoryReset = async () => {
-    // SECURITY WARNING: This function performs a destructive DELETE to Firebase.
-    // The password has already been verified before reaching this point
-    // (pwStep === 'confirm_reset' is only reachable after handleVerifyPassword succeeds).
-    // However, the Firebase DELETE request is unauthenticated — anyone with the URL can delete data.
-    // If authentication is needed, consider using Firebase Security Rules or a backend proxy.
     setResetting(true);
     toast.info('Iniciando restablecimiento…');
     try {
-      // 1. Limpiar localStorage primero (siempre funciona)
-      let clearedCount = 0;
-      for (const key of ALL_DATA_KEYS) {
-        if (localStorage.getItem(key) !== null) {
-          localStorage.removeItem(key);
-          clearedCount++;
-        }
-      }
-      // Limpiar también TODAS las claves relacionadas con trazabilidad (catch-all)
-      const allKeys = Object.keys(localStorage);
-      let extraCleared = 0;
-      for (const k of allKeys) {
-        if (k.startsWith('trazabilidad_') || k.startsWith('cruce_caliral')) {
-          // No borrar la contraseña ni el salt (se borran aparte si es force_reset)
-          if (k !== 'trazabilidad_system_password' && k !== 'trazabilidad_pbkdf2_salt') {
-            localStorage.removeItem(k);
-            extraCleared++;
-          }
-        }
-      }
-      toast.success(`Local: ${clearedCount} claves principales + ${extraCleared} extra borradas`);
+      // 1. NUCLEAR: borrar absolutamente todo localStorage y sessionStorage
+      // Esto es lo más robusto — no dependemos de una lista de claves.
+      const lsCount = localStorage.length;
+      const ssCount = sessionStorage.length;
+      localStorage.clear();
+      sessionStorage.clear();
+      console.info(`[FactoryReset] localStorage: ${lsCount} claves, sessionStorage: ${ssCount} claves — todas borradas`);
+      toast.success(`Local: ${lsCount + ssCount} claves borradas`);
 
-      // 2. Intentar borrar Firebase con TIMEOUT de 10s (no bloquea si falla)
+      // 2. Intentar borrar Firebase con TIMEOUT de 10s
       if (gs.isConfigured()) {
         try {
           const fbUrl = gs.getSheetUrl();
           console.warn('[FactoryReset] Deleting remote Firebase data for:', fbUrl);
-          toast.info('Intentando borrar Firebase…');
+          toast.info('Borrando Firebase…');
           const controller = new AbortController();
           const timeoutId = setTimeout(() => controller.abort(), 10000);
           const response = await fetch(`${fbUrl}/.json`, {
@@ -200,62 +182,86 @@ export default function SettingsSheet({ open, onOpenChange }: SettingsSheetProps
           clearTimeout(timeoutId);
           if (!response.ok) {
             console.error('[FactoryReset] Firebase DELETE failed:', response.status, response.statusText);
-            toast.warning(`Firebase: HTTP ${response.status} (local ya está borrado)`);
+            toast.warning(`Firebase: HTTP ${response.status}`);
           } else {
             console.info('[FactoryReset] Firebase data deleted successfully');
             toast.success('Firebase: datos borrados');
           }
         } catch (fbErr: any) {
           if (fbErr?.name === 'AbortError') {
-            console.error('[FactoryReset] Firebase DELETE timed out');
             toast.warning('Firebase: timeout (local ya está borrado)');
           } else {
-            console.error('[FactoryReset] Error deleting Firebase data:', fbErr);
-            toast.warning(`Firebase: ${fbErr?.message || 'error'} (local ya está borrado)`);
+            toast.warning(`Firebase: ${fbErr?.message || 'error'}`);
           }
         }
       } else {
         toast.info('Firebase no configurado — solo se borra local');
       }
 
-      // 3. Forzar reload
-      localStorage.setItem('trazabilidad_last_sync', new Date().toISOString());
+      // 3. Limpiar caches del navegador si están disponibles (Service Worker, Cache API)
+      if ('caches' in window) {
+        try {
+          const cacheNames = await caches.keys();
+          for (const name of cacheNames) {
+            await caches.delete(name);
+          }
+          if (cacheNames.length > 0) {
+            console.info(`[FactoryReset] ${cacheNames.length} caches borrados`);
+            toast.info(`Caches: ${cacheNames.length} borrados`);
+          }
+        } catch (cacheErr) {
+          console.warn('[FactoryReset] Error clearing caches:', cacheErr);
+        }
+      }
+
+      // 4. Desregistrar Service Workers si existen
+      if ('serviceWorker' in navigator) {
+        try {
+          const registrations = await navigator.serviceWorker.getRegistrations();
+          for (const reg of registrations) {
+            await reg.unregister();
+          }
+          if (registrations.length > 0) {
+            console.info(`[FactoryReset] ${registrations.length} service workers desregistrados`);
+          }
+        } catch (swErr) {
+          console.warn('[FactoryReset] Error unregistering SW:', swErr);
+        }
+      }
+
+      // 5. Forzar recarga completa (sin caché)
       setPwStep('idle');
       toast.success('Sistema restablecido. Recargando…');
       onOpenChange(false);
-      setTimeout(() => window.location.reload(), 1500);
+      // Recarga fuerte: agregamos un cache-buster a la URL
+      setTimeout(() => {
+        window.location.href = window.location.pathname + '?reset=' + Date.now();
+      }, 1500);
     } catch (err) {
       console.error('[FactoryReset] Unexpected error:', err);
-      toast.error('Error al restablecer: ' + (err as Error).message);
-      // Aún así intentar recargar
+      toast.error('Error: ' + (err as Error).message);
       setTimeout(() => window.location.reload(), 2000);
     } finally {
       setResetting(false);
     }
   };
 
-  // Reset forzado sin contraseña: borra TODO incluyendo la propia contraseña.
-  // Requiere escribir "BORRAR" exacto para confirmar.
+  // Reset forzado sin contraseña: NUCLEAR. Borra todo + recarga.
   const handleForceReset = async () => {
     if (forceConfirmText.trim().toUpperCase() !== 'BORRAR') {
       toast.error('Escribí "BORRAR" para confirmar');
       return;
     }
     setResetting(true);
-    toast.warning('Forzando restablecimiento sin contraseña…');
+    toast.warning('Forzando restablecimiento…');
     try {
-      // Borrar absolutamente todo lo que empiece con trazabilidad_ o cruce_caliral
-      const allKeys = Object.keys(localStorage);
-      let cleared = 0;
-      for (const k of allKeys) {
-        if (k.startsWith('trazabilidad_') || k.startsWith('cruce_caliral')) {
-          localStorage.removeItem(k);
-          cleared++;
-        }
-      }
-      toast.success(`Local: ${cleared} claves borradas (incluida contraseña)`);
+      const lsCount = localStorage.length;
+      const ssCount = sessionStorage.length;
+      localStorage.clear();
+      sessionStorage.clear();
+      console.info(`[ForceReset] localStorage: ${lsCount}, sessionStorage: ${ssCount} — TODO borrado`);
+      toast.success(`Local: ${lsCount + ssCount} claves borradas`);
 
-      // Firebase con timeout
       if (gs.isConfigured()) {
         try {
           const fbUrl = gs.getSheetUrl();
@@ -276,11 +282,27 @@ export default function SettingsSheet({ open, onOpenChange }: SettingsSheetProps
         }
       }
 
+      // Caches y SW
+      if ('caches' in window) {
+        try {
+          const cacheNames = await caches.keys();
+          for (const name of cacheNames) await caches.delete(name);
+        } catch {}
+      }
+      if ('serviceWorker' in navigator) {
+        try {
+          const regs = await navigator.serviceWorker.getRegistrations();
+          for (const r of regs) await r.unregister();
+        } catch {}
+      }
+
       setPwStep('idle');
       setForceConfirmText('');
       toast.success('Sistema restablecido. Recargando…');
       onOpenChange(false);
-      setTimeout(() => window.location.reload(), 1500);
+      setTimeout(() => {
+        window.location.href = window.location.pathname + '?reset=' + Date.now();
+      }, 1500);
     } catch (err) {
       console.error('[ForceReset] error:', err);
       toast.error('Error: ' + (err as Error).message);
