@@ -478,23 +478,15 @@ export default function MercadoNacional() {
           }
         }
 
-        // 2. Si no hay datos en Firebase, cargar el .json.gz pre-cargado
-        setLoadProgress('Cargando registros (comprimido 5MB)…');
-        const rr = await fetch(dataUrl('data/nacional_mgmp.json.gz'));
-        if (rr.ok && !cancelled) {
-          if (rr.body && typeof DecompressionStream !== 'undefined') {
-            const ds = new DecompressionStream('gzip');
-            const decompressed = rr.body.pipeThrough(ds);
-            const text = await new Response(decompressed).text();
-            const data: MovRecord[] = JSON.parse(text);
-            setRecords(data);
-          } else {
-            const buf = await rr.arrayBuffer();
-            const pako = await import('pako');
-            const decompressed = pako.inflate(new Uint8Array(buf));
-            const text = new TextDecoder().decode(decompressed);
-            const data: MovRecord[] = JSON.parse(text);
-            setRecords(data);
+        // 2. Si no hay datos en Firebase, no intentar cargar el .json.gz
+        //    (archivo borrado del bundle). Mostrar estado vacío.
+        if (!cancelled) {
+          setRecords([]);
+          setLoadProgress('');
+          setLoadingRecords(false);
+          // Mostrar mensaje informativo si no hay datos
+          if (!records.length) {
+            toast.info('Sin datos del mercado. Subí el Excel MGAP desde el botón "Subir Excel MGAP".');
           }
         }
       } catch (err) {
