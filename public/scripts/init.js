@@ -1,15 +1,23 @@
 // Trazabilidad init scripts - combined from layout.tsx inline scripts
 
 // Script 1: Reset logic - clear ALL localStorage if ?reset= is in the URL
+// PERO preserva el flag de bloqueo de Firebase pull (para que initialPull
+// no vuelva a descargar los datos que el usuario acaba de borrar).
 (function () {
   try {
     // Silence Puter.js console messages
     window.__puter_quiet = true;
     var p = new URLSearchParams(window.location.search);
     if (p.has('reset')) {
+      // Preservar el flag de bloqueo antes del clear
+      var blockFlag = localStorage.getItem('trazabilidad_block_firebase_pull_until');
       // NUCLEAR: borrar absolutamente todo localStorage y sessionStorage
       try { localStorage.clear(); } catch (e) { }
       try { sessionStorage.clear(); } catch (e) { }
+      // Restaurar el flag de bloqueo si existía
+      if (blockFlag) {
+        try { localStorage.setItem('trazabilidad_block_firebase_pull_until', blockFlag); } catch (e) { }
+      }
       // Limpiar caches del navegador
       if ('caches' in window) {
         caches.keys().then(function (names) {

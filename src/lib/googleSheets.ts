@@ -314,6 +314,21 @@ export async function initialPull(): Promise<{ count: number; error?: string }> 
   const url = getSheetUrl();
   if (!url) return { count: 0 };
 
+  // BLOQUEO post-reset: si se hizo un reset reciente, no descargar de Firebase
+  // porque significaría repoblar los datos que el usuario acaba de borrar.
+  if (typeof window !== 'undefined') {
+    const resetBlock = localStorage.getItem('trazabilidad_block_firebase_pull_until');
+    if (resetBlock) {
+      const until = parseInt(resetBlock, 10);
+      if (Date.now() < until) {
+        console.info('[initialPull] Bloqueado por reset reciente. Faltan', Math.ceil((until - Date.now()) / 1000), 's');
+        return { count: 0 };
+      } else {
+        localStorage.removeItem('trazabilidad_block_firebase_pull_until');
+      }
+    }
+  }
+
   const result = await pullFromSheets();
   dispatchSyncEvent('initial-pull', result);
 

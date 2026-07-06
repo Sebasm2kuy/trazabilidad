@@ -158,16 +158,23 @@ export default function SettingsSheet({ open, onOpenChange }: SettingsSheetProps
     setResetting(true);
     toast.info('Iniciando restablecimiento…');
     try {
+      // 0. Setear flag de bloqueo de Firebase pull por 5 minutos
+      // Esto evita que initialPull() vuelva a descargar los datos de Firebase
+      // que el usuario acaba de borrar.
+      const blockUntil = Date.now() + 5 * 60 * 1000; // 5 minutos
+
       // 1. NUCLEAR: borrar absolutamente todo localStorage y sessionStorage
-      // Esto es lo más robusto — no dependemos de una lista de claves.
       const lsCount = localStorage.length;
       const ssCount = sessionStorage.length;
       localStorage.clear();
       sessionStorage.clear();
       console.info(`[FactoryReset] localStorage: ${lsCount} claves, sessionStorage: ${ssCount} claves — todas borradas`);
+
+      // 2. Re-setear el flag DESPUÉS del clear (para que sobreviva)
+      localStorage.setItem('trazabilidad_block_firebase_pull_until', String(blockUntil));
       toast.success(`Local: ${lsCount + ssCount} claves borradas`);
 
-      // 2. Intentar borrar Firebase con TIMEOUT de 10s
+      // 3. Intentar borrar Firebase con TIMEOUT de 10s
       if (gs.isConfigured()) {
         try {
           const fbUrl = gs.getSheetUrl();
@@ -198,42 +205,27 @@ export default function SettingsSheet({ open, onOpenChange }: SettingsSheetProps
         toast.info('Firebase no configurado — solo se borra local');
       }
 
-      // 3. Limpiar caches del navegador si están disponibles (Service Worker, Cache API)
+      // 4. Limpiar caches del navegador
       if ('caches' in window) {
         try {
           const cacheNames = await caches.keys();
-          for (const name of cacheNames) {
-            await caches.delete(name);
-          }
-          if (cacheNames.length > 0) {
-            console.info(`[FactoryReset] ${cacheNames.length} caches borrados`);
-            toast.info(`Caches: ${cacheNames.length} borrados`);
-          }
-        } catch (cacheErr) {
-          console.warn('[FactoryReset] Error clearing caches:', cacheErr);
-        }
+          for (const name of cacheNames) await caches.delete(name);
+          if (cacheNames.length > 0) toast.info(`Caches: ${cacheNames.length} borrados`);
+        } catch {}
       }
 
-      // 4. Desregistrar Service Workers si existen
+      // 5. Desregistrar Service Workers
       if ('serviceWorker' in navigator) {
         try {
           const registrations = await navigator.serviceWorker.getRegistrations();
-          for (const reg of registrations) {
-            await reg.unregister();
-          }
-          if (registrations.length > 0) {
-            console.info(`[FactoryReset] ${registrations.length} service workers desregistrados`);
-          }
-        } catch (swErr) {
-          console.warn('[FactoryReset] Error unregistering SW:', swErr);
-        }
+          for (const reg of registrations) await reg.unregister();
+        } catch {}
       }
 
-      // 5. Forzar recarga completa (sin caché)
+      // 6. Forzar recarga completa
       setPwStep('idle');
       toast.success('Sistema restablecido. Recargando…');
       onOpenChange(false);
-      // Recarga fuerte: agregamos un cache-buster a la URL
       setTimeout(() => {
         window.location.href = window.location.pathname + '?reset=' + Date.now();
       }, 1500);
@@ -246,7 +238,7 @@ export default function SettingsSheet({ open, onOpenChange }: SettingsSheetProps
     }
   };
 
-  // Reset forzado sin contraseña: NUCLEAR. Borra todo + recarga.
+  // Reset forzado sin contraseña: NUCLEAR. Borra todo + Firebase + bloquea pull.
   const handleForceReset = async () => {
     if (forceConfirmText.trim().toUpperCase() !== 'BORRAR') {
       toast.error('Escribí "BORRAR" para confirmar');
@@ -255,11 +247,15 @@ export default function SettingsSheet({ open, onOpenChange }: SettingsSheetProps
     setResetting(true);
     toast.warning('Forzando restablecimiento…');
     try {
+      const blockUntil = Date.now() + 5 * 60 * 1000;
+
       const lsCount = localStorage.length;
       const ssCount = sessionStorage.length;
       localStorage.clear();
       sessionStorage.clear();
       console.info(`[ForceReset] localStorage: ${lsCount}, sessionStorage: ${ssCount} — TODO borrado`);
+
+      localStorage.setItem('trazabilidad_block_firebase_pull_until', String(blockUntil));
       toast.success(`Local: ${lsCount + ssCount} claves borradas`);
 
       if (gs.isConfigured()) {
@@ -272,17 +268,13 @@ export default function SettingsSheet({ open, onOpenChange }: SettingsSheetProps
             signal: controller.signal,
           });
           clearTimeout(timeoutId);
-          if (response.ok) {
-            toast.success('Firebase: datos borrados');
-          } else {
-            toast.warning(`Firebase: HTTP ${response.status}`);
-          }
+          if (response.ok) toast.success('Firebase: datos borrados');
+          else toast.warning(`Firebase: HTTP ${response.status}`);
         } catch (fbErr: any) {
           toast.warning(`Firebase: ${fbErr?.name === 'AbortError' ? 'timeout' : (fbErr?.message || 'error')}`);
         }
       }
 
-      // Caches y SW
       if ('caches' in window) {
         try {
           const cacheNames = await caches.keys();
