@@ -105,7 +105,15 @@ export function NireaSanJacinto() {
 
   const fmt = (n: number) => n.toLocaleString('es-UY', { maximumFractionDigits: 0 });
   const fmtT = (n: number) => `${(n / 1000).toFixed(1)} t`;
-  const fmtPct = (n: number) => `${n.toFixed(1)}%`;
+  // Formato de % adaptativo: muestra más decimales cuando el valor es muy chico
+  // para evitar que aparezca "0.0%" cuando en realidad hay captura.
+  const fmtPct = (n: number) => {
+    if (n === 0) return '0%';
+    if (n < 0.01) return `${n.toFixed(4)}%`;
+    if (n < 0.1) return `${n.toFixed(3)}%`;
+    if (n < 1) return `${n.toFixed(2)}%`;
+    return `${n.toFixed(1)}%`;
+  };
 
   const currentPreset = presets.find(p => p.id === periodPreset);
   const periodLabel = showCustomDates
@@ -231,9 +239,16 @@ export function NireaSanJacinto() {
                 <p className="text-xs uppercase tracking-wider text-slate-500 font-semibold mb-1">
                   Índice de Captura CALIRAL
                 </p>
-                <p className="text-5xl font-bold text-violet-700 dark:text-violet-300 tabular-nums">
-                  {fmtPct(result.captureIndex)}
-                </p>
+                <div className="flex items-baseline gap-3">
+                  <p className="text-5xl font-bold text-violet-700 dark:text-violet-300 tabular-nums">
+                    {fmtPct(result.captureIndex)}
+                  </p>
+                  {result.captureIndex > 0 && result.captureIndex < 1 && (
+                    <p className="text-sm font-medium text-violet-600 dark:text-violet-400">
+                      ({fmt(result.caliralPn)} kg de {fmt(result.totalClientePn)} kg)
+                    </p>
+                  )}
+                </div>
                 <p className="text-sm text-slate-600 dark:text-slate-300 mt-2">
                   CALIRAL gestionó <strong>{fmtT(result.caliralPn)}</strong> de <strong>{fmtT(result.totalClientePn)}</strong> exportados por {NIREA_NAME}.
                 </p>
@@ -242,12 +257,12 @@ export function NireaSanJacinto() {
                 </p>
               </div>
               <div className="hidden md:block w-32 h-32 relative">
-                {/* Donut SVG simple */}
+                {/* Donut SVG simple — si el % es muy chico, mostrar un mínimo visible */}
                 <svg viewBox="0 0 100 100" className="w-full h-full -rotate-90">
                   <circle cx="50" cy="50" r="42" fill="none" stroke="#e2e8f0" strokeWidth="10" />
                   <circle
                     cx="50" cy="50" r="42" fill="none" stroke="#8b5cf6" strokeWidth="10"
-                    strokeDasharray={`${(result.captureIndex / 100) * 264} 264`}
+                    strokeDasharray={`${Math.max((result.captureIndex / 100) * 264, result.captureIndex > 0 ? 6 : 0)} 264`}
                     strokeLinecap="round"
                   />
                 </svg>
