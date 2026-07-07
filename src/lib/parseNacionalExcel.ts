@@ -94,7 +94,7 @@ export async function parseNacionalExcel(
     const tipoMov = cleanStr(row[20]).toUpperCase();
     const isExport = tipoMov.includes('EXPORT');
     const isDep = tipoMov.includes('DEP') || tipoMov.includes('INGRESO');
-    const proceso = cleanStr(row[60]).toUpperCase();
+    const proceso = cleanStr(row[59]).toUpperCase();
     const tpd = proceso.includes('CONGEL') ? 'Congelado' : proceso.includes('FRESC') || proceso.includes('REFRIG') ? 'Fresco' : '';
 
     const rec: MovRecord = {
@@ -107,14 +107,14 @@ export async function parseNacionalExcel(
       ed: cleanStr(row[19]),        // establecimiento destino (cliente)
       tm: cleanStr(row[20]),        // tipo movimiento
       pa: cleanStr(row[23]),        // país destino
-      d: cleanStr(row[43]),         // denominación mercadería (producto)
-      co: cleanStr(row[44]),        // corte
-      pa2: cleanNum(row[45]),       // pallets
-      e: cleanNum(row[46]),         // envases
-      pb: cleanNum(row[47]),        // peso bruto
-      pn: cleanNum(row[48]),        // peso neto
+      d: cleanStr(row[42]),         // denominación mercadería (producto)
+      co: cleanStr(row[43]),        // corte
+      pa2: cleanNum(row[44]),       // pallets
+      e: cleanNum(row[45]),         // envases
+      pb: cleanNum(row[46]),        // peso bruto
+      pn: cleanNum(row[47]),        // peso neto
       tt: cleanStr(row[9]),         // tipo transporte
-      sh: cleanStr(row[50]),        // shipping
+      sh: cleanStr(row[49]),        // shipping
       tpd: tpd,                     // tipo producto (Congelado/Fresco)
       isd: isDep,                   // es depósito
     };
