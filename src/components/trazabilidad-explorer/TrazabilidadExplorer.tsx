@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState, useMemo, useCallback } from 'react';
+import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -7,7 +7,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import {
   Package, Search, X, ChevronRight, ChevronDown, FileCheck, ArrowLeftRight,
   Ship, Plus, AlertTriangle, CheckCircle2,
-  ArrowRight, Calendar, Box, Weight, Hash, FileText
+  ArrowRight, Calendar, Box, Weight, Hash, FileText, Upload, Loader2
 } from 'lucide-react';
 import { dataUrl } from '@/lib/staticData';
 import { loadDepositos, loadExportaciones } from '@/lib/dataRepository';
@@ -75,6 +75,27 @@ export default function TrazabilidadExplorer() {
   const [addIngresoCajas, setAddIngresoCajas] = useState('');
   const [addIngresoTramite, setAddIngresoTramite] = useState('');
   const [addIngresoProducto, setAddIngresoProducto] = useState('');
+  const [stockUploading, setStockUploading] = useState(false);
+  const stockInputRef = useRef<HTMLInputElement>(null);
+
+  const handleStockUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setStockUploading(true);
+    try {
+      const { parseStockXls } = await import('@/lib/parseStockXls');
+      const load = await parseStockXls(file);
+      localStorage.setItem('trazabilidad_stock_data', JSON.stringify(load));
+      toast.success(`Stock cargado: ${load.pallets.length} pallets`);
+      setDataVersion(v => v + 1);
+    } catch (err) {
+      console.error('Error cargando stock:', err);
+      toast.error('Error al cargar el archivo de stock');
+    } finally {
+      setStockUploading(false);
+      if (stockInputRef.current) stockInputRef.current.value = '';
+    }
+  }, []);
 
   const reloadData = useCallback(async () => {
     try {
@@ -364,6 +385,25 @@ export default function TrazabilidadExplorer() {
         <div className="flex items-center gap-3">
           <h2 className="text-2xl font-bold text-slate-800">Trazabilidad Explorer</h2>
           <span className="text-xs text-slate-500">{data?.fecha} — {stats.total} COTEs</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <input
+            ref={stockInputRef}
+            type="file"
+            accept=".xls,.xlsx"
+            onChange={handleStockUpload}
+            className="hidden"
+          />
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => stockInputRef.current?.click()}
+            disabled={stockUploading}
+            className="gap-1.5"
+          >
+            {stockUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+            {stockUploading ? 'Cargando…' : 'Cargar Stock'}
+          </Button>
         </div>
       </div>
 
