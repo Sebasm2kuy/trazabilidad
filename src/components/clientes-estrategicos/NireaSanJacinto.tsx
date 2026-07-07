@@ -28,10 +28,45 @@ const NIREA_NAME = CLIENTES_ESTRATEGICOS.find(c => c.id === 'NIREA')!.name;
 
 type View = 'resumen' | 'paises' | 'cortes' | 'mes' | 'certificadores';
 
+// Presets de período (rangos de fechas comunes para análisis)
+interface PeriodPreset {
+  id: string;
+  label: string;
+  start: string;
+  end: string;
+}
+
+function getPeriodPresets(): PeriodPreset[] {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = now.getMonth(); // 0-11
+  const fmt = (date: Date) => date.toISOString().split('T')[0];
+
+  const presets: PeriodPreset[] = [
+    { id: 'todo', label: 'Todo el período', start: '', end: '' },
+    { id: '2025', label: 'Año 2025', start: '2025-01-01', end: '2025-12-31' },
+    { id: '2026', label: 'Año 2026', start: '2026-01-01', end: '2026-12-31' },
+    { id: 'ult12', label: 'Últimos 12 meses', start: fmt(new Date(y, m - 11, 1)), end: fmt(now) },
+    { id: 'ult6', label: 'Últimos 6 meses', start: fmt(new Date(y, m - 5, 1)), end: fmt(now) },
+    { id: 'ult3', label: 'Últimos 3 meses', start: fmt(new Date(y, m - 2, 1)), end: fmt(now) },
+    { id: 'q1_26', label: 'Q1 2026', start: '2026-01-01', end: '2026-03-31' },
+    { id: 'q2_26', label: 'Q2 2026', start: '2026-04-01', end: '2026-06-30' },
+    { id: 'h1_26', label: '1S 2026', start: '2026-01-01', end: '2026-06-30' },
+    { id: 'h2_25', label: '2S 2025', start: '2025-07-01', end: '2025-12-31' },
+  ];
+  return presets;
+}
+
 export function NireaSanJacinto() {
   const [loading, setLoading] = useState(true);
   const [records, setRecords] = useState<any[]>([]);
   const [view, setView] = useState<View>('resumen');
+  const [periodPreset, setPeriodPreset] = useState<string>('todo');
+  const [dateFrom, setDateFrom] = useState<string>('');
+  const [dateTo, setDateTo] = useState<string>('');
+  const [showCustomDates, setShowCustomDates] = useState(false);
+
+  const presets = useMemo(() => getPeriodPresets(), []);
 
   useEffect(() => {
     let mounted = true;
@@ -42,12 +77,40 @@ export function NireaSanJacinto() {
     return () => { mounted = false; };
   }, []);
 
-  const result = useMemo(() => computeCapturaCaliral(records, NIREA_ALIASES), [records]);
+  // Filtrar records por período seleccionado
+  const filteredRecords = useMemo(() => {
+    if (!records.length) return [];
+    // Si hay fechas custom, usarlas; sino usar el preset
+    let start = dateFrom;
+    let end = dateTo;
+    if (!showCustomDates) {
+      const p = presets.find(p => p.id === periodPreset);
+      if (p) {
+        start = p.start;
+        end = p.end;
+      }
+    }
+    if (!start && !end) return records;
+    return records.filter((r: any) => {
+      const f = r.f || '';
+      if (!f) return false;
+      if (start && f < start) return false;
+      if (end && f > end) return false;
+      return true;
+    });
+  }, [records, periodPreset, dateFrom, dateTo, showCustomDates, presets]);
+
+  const result = useMemo(() => computeCapturaCaliral(filteredRecords, NIREA_ALIASES), [filteredRecords]);
   const insights = useMemo(() => generateCapturaInsights(result, NIREA_NAME), [result]);
 
   const fmt = (n: number) => n.toLocaleString('es-UY', { maximumFractionDigits: 0 });
   const fmtT = (n: number) => `${(n / 1000).toFixed(1)} t`;
   const fmtPct = (n: number) => `${n.toFixed(1)}%`;
+
+  const currentPreset = presets.find(p => p.id === periodPreset);
+  const periodLabel = showCustomDates
+    ? `${dateFrom || '—'} → ${dateTo || '—'}`
+    : currentPreset?.label || 'Todo el período';
 
   if (loading) {
     return (
@@ -92,6 +155,69 @@ export function NireaSanJacinto() {
               </p>
             </div>
             <NacionalUploadButton />
+          </div>
+
+          {/* SELECTOR DE PERÍODO */}
+          <div className="mt-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3">
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300">
+                <Calendar className="w-3.5 h-3.5 text-violet-600" />
+                <span>Período:</span>
+              </div>
+              {!showCustomDates ? (
+                <select
+                  value={periodPreset}
+                  onChange={e => setPeriodPreset(e.target.value)}
+                  className="text-xs border border-slate-200 dark:border-slate-800 rounded-md px-2 py-1.5 bg-white dark:bg-slate-950 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-violet-500/40"
+                >
+                  {presets.map(p => (
+                    <option key={p.id} value={p.id}>{p.label}</option>
+                  ))}
+                </select>
+              ) : (
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="date"
+                    value={dateFrom}
+                    onChange={e => setDateFrom(e.target.value)}
+                    className="text-xs border border-slate-200 dark:border-slate-800 rounded-md px-2 py-1.5 bg-white dark:bg-slate-950 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-violet-500/40"
+                  />
+                  <span className="text-slate-400 text-xs">→</span>
+                  <input
+                    type="date"
+                    value={dateTo}
+                    onChange={e => setDateTo(e.target.value)}
+                    className="text-xs border border-slate-200 dark:border-slate-800 rounded-md px-2 py-1.5 bg-white dark:bg-slate-950 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-violet-500/40"
+                  />
+                </div>
+              )}
+              <button
+                onClick={() => {
+                  setShowCustomDates(v => !v);
+                  if (!showCustomDates) {
+                    // Al pasar a custom, inicializar con el preset actual
+                    const p = presets.find(p => p.id === periodPreset);
+                    if (p) { setDateFrom(p.start); setDateTo(p.end); }
+                  }
+                }}
+                className={cn(
+                  'text-[11px] px-2 py-1 rounded-md transition-colors',
+                  showCustomDates
+                    ? 'bg-violet-100 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300'
+                    : 'text-slate-500 hover:text-violet-600 hover:bg-slate-50 dark:hover:bg-slate-800'
+                )}
+              >
+                {showCustomDates ? 'Usar presets' : 'Personalizado'}
+              </button>
+              <div className="ml-auto flex items-center gap-1.5">
+                <Badge variant="outline" className="text-[10px] font-mono">
+                  {periodLabel}
+                </Badge>
+                <span className="text-[11px] text-slate-500">
+                  {filteredRecords.length.toLocaleString('es-UY')} registros analizados
+                </span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
