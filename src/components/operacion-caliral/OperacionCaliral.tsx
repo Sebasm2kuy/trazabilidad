@@ -66,7 +66,28 @@ export function OperacionCaliral() {
     return () => { mounted = false; };
   }, []);
 
-  const stock = useMemo(() => buildStockItems(depositos, exportaciones), [depositos, exportaciones]);
+  // Calcular STOCK REAL = ingresos a depósito − exportaciones, por COTE.
+  // buildStockItems trata cada depósito como stock, pero necesitamos restar
+  // lo que ya se exportó. Si un COTE tiene ingreso Y exportación, el stock
+  // real es la diferencia. Si solo tiene ingreso, es stock. Si solo tiene
+  // exportación, no cuenta (ya salió).
+  const stock = useMemo(() => {
+    const items = buildStockItems(depositos, exportaciones);
+    // Indexar exportaciones por COTE
+    const expByCote = new Map<string, number>();
+    for (const e of exportaciones) {
+      const cote = e.nroCote;
+      if (!cote) continue;
+      expByCote.set(cote, (expByCote.get(cote) || 0) + (e.pesoNeto || 0));
+    }
+    // Filtrar lotes: solo quedan en stock los que tienen más ingreso que exportación
+    return items.filter(l => {
+      const expPn = expByCote.get(l.cote) || 0;
+      // Si la exportación >= ingreso, el lote ya salió, no está en stock
+      if (expPn >= l.pesoNeto && l.tieneExportacion) return false;
+      return true;
+    });
+  }, [depositos, exportaciones]);
 
   // --- Cálculos operativos ---
   const almacenada = useMemo(() => stock.reduce((s, l) => s + l.pesoNeto, 0), [stock]);
