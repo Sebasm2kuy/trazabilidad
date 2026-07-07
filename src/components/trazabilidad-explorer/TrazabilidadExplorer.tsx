@@ -103,11 +103,17 @@ export default function TrazabilidadExplorer() {
       let palletsData: StockPallet[] = [];
       try {
         const raw = localStorage.getItem('trazabilidad_stock_data');
+        console.log('[trazabilidad] localStorage stock_data raw length:', raw?.length || 0);
         if (raw) {
           const load: StockLoad = JSON.parse(raw);
           palletsData = load.pallets || [];
+          console.log('[trazabilidad] Pallets cargados desde localStorage:', palletsData.length);
+          // Log sample pallets
+          if (palletsData.length > 0) {
+            console.log('[trazabilidad] Sample pallet 0:', { codigo: palletsData[0].codigo, codigoTipo: palletsData[0].codigoTipo, cajas: palletsData[0].cajas, kilos: palletsData[0].kilos, contenido: palletsData[0].contenido?.substring(0, 60) });
+          }
         }
-      } catch { /* noop */ }
+      } catch (e) { console.error('[trazabilidad] Error leyendo stock_data:', e); }
 
       // Fallback: stock_trazabilidad.json estático (puede estar vacío)
       if (palletsData.length === 0) {
@@ -277,6 +283,8 @@ export default function TrazabilidadExplorer() {
         cotes: Array.from(cotesMap.values()).sort((a, b) => a.cote.localeCompare(b.cote)),
       };
       setData(d);
+      console.log('[trazabilidad] Datos cargados:', { pallets: palletsData.length, cotes: cotesMap.size, stockCotes: palletsByCote.size, depCotes: depByCote.size, expCotes: expByCote.size });
+      toast.info(`Trazabilidad: ${cotesMap.size} COTEs (${palletsByCote.size} con stock, ${depByCote.size} con ingreso, ${expByCote.size} con exportación)`);
     } catch (err) { console.error('Error loading data:', err); }
     setLoading(false);
   }, []);
