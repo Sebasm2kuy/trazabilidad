@@ -22,7 +22,13 @@ import React from 'react';
 interface StockPallet {
   id: string; contenedor: string; pallets: number; cajas: number; kilos: number;
   contenido: string; producto: string; nroLote: string; fechaVencimiento: string;
-  fechaEntrega: string; codigo: string; codigoTipo: string;
+  fechaEntrega: string; codigo: string; codigoTipo: string; fechaComision?: string;
+}
+
+interface StockLoad {
+  fecha: string;
+  cliente: string;
+  pallets: StockPallet[];
 }
 
 interface CoteTrazabilidad {
@@ -79,17 +85,29 @@ export default function TrazabilidadExplorer() {
         loadExportaciones(),
       ]);
 
-      // También cargar stock_trazabilidad.json si existe (pallets físicos)
+      // Cargar stock de pallets desde localStorage (mismo lugar que Cruces Frimaral)
+      // Si no hay, intentar desde stock_trazabilidad.json (fallback)
       let palletsData: StockPallet[] = [];
       try {
-        const r = await fetch(dataUrl('data/stock_trazabilidad.json'));
-        if (r.ok) {
-          const raw = await r.json();
-          if (raw && Array.isArray(raw.pallets)) {
-            palletsData = raw.pallets;
-          }
+        const raw = localStorage.getItem('trazabilidad_stock_data');
+        if (raw) {
+          const load: StockLoad = JSON.parse(raw);
+          palletsData = load.pallets || [];
         }
       } catch { /* noop */ }
+
+      // Fallback: stock_trazabilidad.json estático (puede estar vacío)
+      if (palletsData.length === 0) {
+        try {
+          const r = await fetch(dataUrl('data/stock_trazabilidad.json'));
+          if (r.ok) {
+            const raw = await r.json();
+            if (raw && Array.isArray(raw.pallets)) {
+              palletsData = raw.pallets;
+            }
+          }
+        } catch { /* noop */ }
+      }
 
       // Indexar exportaciones por COTE para referencias cruzadas
       const expByCote = new Map<string, ExpRecord[]>();
