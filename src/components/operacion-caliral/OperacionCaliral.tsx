@@ -20,7 +20,7 @@ import { UniversalSearch } from '@/components/centro/UniversalSearch';
 import { EntityDrawer } from '@/components/centro/EntityDrawer';
 import { loadDepositos, loadExportaciones } from '@/lib/dataRepository';
 import type { Shipment, ExpRecord } from '@/lib/types';
-import { buildStockItems } from '@/domain/adapters';
+import type { StockLoad, StockPallet } from '@/lib/parseStockXls';
 import { useAppStore } from '@/store/useAppStore';
 import { useEntityDrawer } from '@/store/useEntityDrawer';
 
@@ -42,6 +42,8 @@ export function OperacionCaliral() {
   const [loading, setLoading] = useState(true);
   const [depositos, setDepositos] = useState<(Shipment | ExpRecord)[]>([]);
   const [exportaciones, setExportaciones] = useState<(Shipment | ExpRecord)[]>([]);
+  const [stockPallets, setStockPallets] = useState<StockPallet[]>([]);
+  const [stockLoad, setStockLoad] = useState<StockLoad | null>(null);
   const setActiveTab = useAppStore(s => s.setActiveTab);
   const openDrawer = useEntityDrawer(s => s.openDrawer);
 
@@ -60,51 +62,80 @@ export function OperacionCaliral() {
         };
         setDepositos(deps.filter(isCaliral));
         setExportaciones(exps.filter(isCaliral));
+
+        // LEER STOCK DE PALLETS desde localStorage (mismo lugar que Cruces Frimaral)
+        try {
+          const raw = localStorage.getItem('trazabilidad_stock_data');
+          if (raw) {
+            const load: StockLoad = JSON.parse(raw);
+            setStockLoad(load);
+            setStockPallets(load.pallets || []);
+          }
+        } catch (e) {
+          console.error('[operacion-caliral] error leyendo stock_data:', e);
+        }
       })
       .catch(e => console.error('[operacion-caliral] carga falló:', e))
       .finally(() => mounted && setLoading(false));
     return () => { mounted = false; };
   }, []);
 
-  // Calcular STOCK REAL = ingresos a depósito − exportaciones, por COTE.
-  // buildStockItems trata cada depósito como stock, pero necesitamos restar
-  // lo que ya se exportó. Si un COTE tiene ingreso Y exportación, el stock
-  // real es la diferencia. Si solo tiene ingreso, es stock. Si solo tiene
-  // exportación, no cuenta (ya salió).
-  const stock = useMemo(() => {
-    const items = buildStockItems(depositos, exportaciones);
-    // Indexar exportaciones por COTE
-    const expByCote = new Map<string, number>();
-    for (const e of exportaciones) {
-      const cote = e.nroCote;
-      if (!cote) continue;
-      expByCote.set(cote, (expByCote.get(cote) || 0) + (e.pesoNeto || 0));
-    }
-    // Filtrar lotes: solo quedan en stock los que tienen más ingreso que exportación
-    return items.filter(l => {
-      const expPn = expByCote.get(l.cote) || 0;
-      // Si la exportación >= ingreso, el lote ya salió, no está en stock
-      if (expPn >= l.pesoNeto && l.tieneExportacion) return false;
-      return true;
-    });
-  }, [depositos, exportaciones]);
+  // --- Cálculos operativos basados en STOCK REAL de pallets ---
+  // El stock real viene del archivo de pallets cargado en Cruces Frimaral,
+  // no de la suma de ingresos históricos a depósito.
+  const stockTotalKg = useMemo(() => stockPallets.reduce((s, p) => s + (p.kilos || 0), 0), [stockPallets]);
+  const stockTotalCajas = useMemo(() => stockPallets.reduce((s, p) => s + (p.cajas || 0), 0), [stockPallets]);
+  const stockTotalPallets = useMemo(() => stockPallets.reduce((s, p) => s + (p.pallets || 0), 0), [stockPallets]);
 
-  // --- Cálculos operativos ---
-  const almacenada = useMemo(() => stock.reduce((s, l) => s + l.pesoNeto, 0), [stock]);
-  const almacenadaEnvases = useMemo(() => stock.reduce((s, l) => s + l.envases, 0), [stock]);
-  const retenida = useMemo(() => stock.filter(l => l.estado === 'retenido'), [stock]);
-  const retenidaPn = retenida.reduce((s, l) => s + l.pesoNeto, 0);
-  const enCaliral = useMemo(() => stock.filter(l => (l.deposito || '').toUpperCase().includes('CALIRAL')), [stock]);
-  const enCaliralPn = enCaliral.reduce((s, l) => s + l.pesoNeto, 0);
-  const enTerceros = useMemo(() => stock.filter(l => !(l.deposito || '').toUpperCase().includes('CALIRAL')), [stock]);
-  const enTercerosPn = enTerceros.reduce((s, l) => s + l.pesoNeto, 0);
-  const mayor180 = useMemo(() => stock.filter(l => l.diasSinMovimiento > 180), [stock]);
-  const mayor180Pn = mayor180.reduce((s, l) => s + l.pesoNeto, 0);
-  const sinDoc = useMemo(() => stock.filter(l => !l.fechaIngreso).slice(0, 50), [stock]);
-  const alertasCriticas = useMemo(() => [
-    ...retenida.map(l => ({ lote: l, motivo: 'Mercadería retenida' })),
-    ...mayor180.map(l => ({ lote: l, motivo: `Sin movimiento ${l.diasSinMovimiento} días` })),
-  ].slice(0, 8), [retenida, mayor180]);
+  // COTEs únicos en stock
+  const stockCotes = useMemo(() => {
+    const set = new Set<string>();
+    for (const p of stockPallets) {
+      if (p.codigo && p.codigoTipo === 'COTE') set.add(p.codigo);
+    }
+    return Array.from(set);
+  }, [stockPallets]);
+
+  // Mercadería retenida: pallets cuyo contenido incluye "RETENIDO" o similar
+  const retenidaPallets = useMemo(() => stockPallets.filter(p => {
+    const c = (p.contenido || '').toUpperCase();
+    return c.includes('RETENIDO') || c.includes('REtenido'.toUpperCase());
+  }), [stockPallets]);
+  const retenidaPn = retenidaPallets.reduce((s, p) => s + (p.kilos || 0), 0);
+
+  // Mercadería mayor a 180 días: pallets cuya fecha de comisión > 180 días
+  const mayor180Pallets = useMemo(() => stockPallets.filter(p => {
+    if (!p.fechaComision) return false;
+    const d = new Date(p.fechaComision);
+    if (isNaN(d.getTime())) return false;
+    const dias = Math.floor((Date.now() - d.getTime()) / DAY_MS);
+    return dias > 180;
+  }), [stockPallets]);
+  const mayor180Pn = mayor180Pallets.reduce((s, p) => s + (p.kilos || 0), 0);
+
+  // Mercadería en CALIRAL vs terceros: todo el stock del archivo está en CALIRAL
+  // (es el depósito propio). Si hay pallets en otros depósitos, se identifican
+  // por el contenedor o contenido. Por ahora asumimos que todo el stock está en CALIRAL.
+  const enCaliralPn = stockTotalKg;
+  const enCaliralCount = stockCotes.length;
+  const enTercerosPn = 0;
+  const enTercerosCount = 0;
+
+  // Sin documentación: pallets sin COTE
+  const sinDocPallets = useMemo(() => stockPallets.filter(p => !p.codigo || p.codigoTipo === 'NINGUNO'), [stockPallets]);
+  const sinDocCount = sinDocPallets.length;
+
+  const alertasCriticas = useMemo(() => {
+    // Alertas: pallets retenidos + pallets > 180 días
+    const alertas: { pallet: StockPallet; motivo: string }[] = [];
+    for (const p of retenidaPallets.slice(0, 4)) {
+      alertas.push({ pallet: p, motivo: 'Mercadería retenida' });
+    }
+    for (const p of mayor180Pallets.slice(0, 4)) {
+      alertas.push({ pallet: p, motivo: `Sin movimiento >180 días` });
+    }
+    return alertas.slice(0, 8);
+  }, [retenidaPallets, mayor180Pallets]);
 
   // Últimos movimientos
   const ultimosMovs = useMemo(() => {
@@ -141,68 +172,70 @@ export function OperacionCaliral() {
     {
       key: 'almacenada',
       label: 'Mercadería almacenada',
-      value: fmtKg(almacenada),
-      subtitle: `${fmt(almacenadaEnvases)} envases • ${stock.length} lotes`,
+      value: fmtKg(stockTotalKg),
+      subtitle: stockPallets.length > 0
+        ? `${fmt(stockTotalCajas)} cajas • ${stockPallets.length} pallets • ${stockCotes.length} COTEs`
+        : 'Sin stock cargado. Subí el Excel en Cruces Frimaral.',
       icon: Package,
       color: 'text-blue-700 dark:text-blue-300',
       bgColor: 'bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-900',
-      onClick: () => setActiveTab('depositos'),
+      onClick: () => setActiveTab('cruce-caliral'),
     },
     {
       key: 'retenida',
       label: 'Mercadería retenida',
       value: fmtKg(retenidaPn),
-      subtitle: retenida.length > 0 ? `${retenida.length} lote(s) — atención requerida` : 'Sin retenciones',
+      subtitle: retenidaPallets.length > 0 ? `${retenidaPallets.length} pallet(s) — atención requerida` : 'Sin retenciones',
       icon: AlertTriangle,
-      color: retenida.length > 0 ? 'text-red-700 dark:text-red-300' : 'text-emerald-700 dark:text-emerald-300',
-      bgColor: retenida.length > 0
+      color: retenidaPallets.length > 0 ? 'text-red-700 dark:text-red-300' : 'text-emerald-700 dark:text-emerald-300',
+      bgColor: retenidaPallets.length > 0
         ? 'bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-900'
         : 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-900',
-      onClick: retenida.length > 0 ? () => openDrawer('cote', retenida[0].id) : undefined,
+      onClick: () => setActiveTab('cruce-caliral'),
     },
     {
       key: 'en-caliral',
       label: 'Mercadería en CALIRAL',
       value: fmtKg(enCaliralPn),
-      subtitle: `${enCaliral.length} lote(s) en depósito propio`,
+      subtitle: `${enCaliralCount} COTE(s) en depósito propio`,
       icon: Warehouse,
       color: 'text-violet-700 dark:text-violet-300',
       bgColor: 'bg-violet-50 dark:bg-violet-950/30 border-violet-200 dark:border-violet-900',
-      onClick: () => setActiveTab('depositos'),
+      onClick: () => setActiveTab('cruce-caliral'),
     },
     {
       key: 'en-terceros',
       label: 'Mercadería en terceros',
       value: fmtKg(enTercerosPn),
-      subtitle: `${enTerceros.length} lote(s) en depósitos de terceros`,
+      subtitle: enTercerosCount > 0 ? `${enTercerosCount} lote(s) en depósitos de terceros` : 'Sin mercadería en terceros',
       icon: Building2,
       color: 'text-amber-700 dark:text-amber-300',
       bgColor: 'bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-900',
-      onClick: () => setActiveTab('depositos'),
+      onClick: () => setActiveTab('cruce-caliral'),
     },
     {
       key: 'mayor-180',
       label: 'Mercadería mayor a 180 días',
       value: fmtKg(mayor180Pn),
-      subtitle: mayor180.length > 0 ? `${mayor180.length} lote(s) inmovilizado(s)` : 'Sin stock crónico',
+      subtitle: mayor180Pallets.length > 0 ? `${mayor180Pallets.length} pallet(s) inmovilizado(s)` : 'Sin stock crónico',
       icon: Clock,
-      color: mayor180.length > 0 ? 'text-orange-700 dark:text-orange-300' : 'text-emerald-700 dark:text-emerald-300',
-      bgColor: mayor180.length > 0
+      color: mayor180Pallets.length > 0 ? 'text-orange-700 dark:text-orange-300' : 'text-emerald-700 dark:text-emerald-300',
+      bgColor: mayor180Pallets.length > 0
         ? 'bg-orange-50 dark:bg-orange-950/30 border-orange-200 dark:border-orange-900'
         : 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-900',
-      onClick: mayor180.length > 0 ? () => openDrawer('cote', mayor180[0].id) : undefined,
+      onClick: () => setActiveTab('cruce-caliral'),
     },
     {
       key: 'doc-pendiente',
       label: 'Documentación pendiente',
-      value: String(sinDoc.length),
-      subtitle: sinDoc.length > 0 ? 'lote(s) sin fecha de ingreso' : 'Todo documentado',
+      value: String(sinDocCount),
+      subtitle: sinDocCount > 0 ? 'pallet(s) sin COTE identificado' : 'Todo documentado',
       icon: FileText,
-      color: sinDoc.length > 0 ? 'text-amber-700 dark:text-amber-300' : 'text-emerald-700 dark:text-emerald-300',
-      bgColor: sinDoc.length > 0
+      color: sinDocCount > 0 ? 'text-amber-700 dark:text-amber-300' : 'text-emerald-700 dark:text-emerald-300',
+      bgColor: sinDocCount > 0
         ? 'bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-900'
         : 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-900',
-      onClick: sinDoc.length > 0 ? () => openDrawer('cote', sinDoc[0].id) : undefined,
+      onClick: () => setActiveTab('cruce-caliral'),
     },
   ];
 
@@ -218,9 +251,9 @@ export function OperacionCaliral() {
             {new Date().toLocaleDateString('es-UY', { weekday: 'long', day: 'numeric', month: 'long' })}
           </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            {stock.length > 0
-              ? `${stock.length} lotes en stock • ${alertasCriticas.length} alerta(s) crítica(s)`
-              : 'Sin datos cargados. Importa un Excel desde Administración.'}
+            {stockPallets.length > 0
+              ? `${stockCotes.length} COTEs en stock • ${stockPallets.length} pallets • ${alertasCriticas.length} alerta(s)`
+              : 'Sin stock cargado. Subí el Excel de pallets en Cruces Frimaral.'}
           </p>
         </div>
       </div>
@@ -294,17 +327,17 @@ export function OperacionCaliral() {
               </h2>
               <Button
                 variant="ghost" size="sm"
-                onClick={() => openDrawer('cote', alertasCriticas[0].lote.id)}
+                onClick={() => setActiveTab('cruce-caliral')}
                 className="text-[11px] text-violet-600"
               >
                 Ver todas <ArrowRight className="w-3 h-3 ml-1" />
               </Button>
             </div>
             <div className="space-y-2">
-              {alertasCriticas.map(({ lote, motivo }) => (
+              {alertasCriticas.map(({ pallet, motivo }) => (
                 <button
-                  key={lote.id}
-                  onClick={() => openDrawer('cote', lote.id)}
+                  key={pallet.id}
+                  onClick={() => pallet.codigo && openDrawer('cote', pallet.codigo)}
                   className="w-full text-left rounded-lg border border-red-200 dark:border-red-900 bg-white dark:bg-slate-900 p-3 hover:shadow-sm transition-shadow flex items-center gap-3"
                 >
                   <div className="w-8 h-8 rounded-lg bg-red-100 dark:bg-red-950/40 flex items-center justify-center shrink-0">
@@ -312,10 +345,10 @@ export function OperacionCaliral() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">
-                      {lote.cote || 'Sin COTE'} — {motivo}
+                      {pallet.codigo || 'Sin COTE'} — {motivo}
                     </p>
                     <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
-                      {lote.deposito} • {lote.productor} • {lote.corte} • {fmtKg(lote.pesoNeto)}
+                      {pallet.contenido?.substring(0, 80)} • {fmtKg(pallet.kilos)}
                     </p>
                   </div>
                   <ChevronRight className="w-4 h-4 text-slate-300 shrink-0" />
