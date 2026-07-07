@@ -78,15 +78,7 @@ export default function TrazabilidadExplorer() {
 
   const reloadData = useCallback(async () => {
     try {
-      // Cargar depósitos y exportaciones desde dataRepository (que respeta
-      // imported/new/edits/deleted en localStorage)
-      const [depositos, exportaciones] = await Promise.all([
-        loadDepositos(),
-        loadExportaciones(),
-      ]);
-
       // Cargar stock de pallets desde localStorage (mismo lugar que Cruces Frimaral)
-      // Si no hay, intentar desde stock_trazabilidad.json (fallback)
       let palletsData: StockPallet[] = [];
       try {
         const raw = localStorage.getItem('trazabilidad_stock_data');
@@ -109,6 +101,12 @@ export default function TrazabilidadExplorer() {
         } catch { /* noop */ }
       }
 
+      // Cargar depósitos y exportaciones para cruzar con stock
+      const [depositos, exportaciones] = await Promise.all([
+        loadDepositos(),
+        loadExportaciones(),
+      ]);
+
       // Indexar exportaciones por COTE para referencias cruzadas
       const expByCote = new Map<string, ExpRecord[]>();
       for (const e of exportaciones) {
@@ -117,144 +115,137 @@ export default function TrazabilidadExplorer() {
         expByCote.get(e.nroCote)!.push(e);
       }
 
-      // Indexar pallets por COTE (extraer COTE del contenido)
+      // Indexar depósitos por COTE
+      const depByCote = new Map<string, Shipment[]>();
+      for (const d of depositos) {
+        if (!d.nroCote) continue;
+        if (!depByCote.has(d.nroCote)) depByCote.set(d.nroCote, []);
+        depByCote.get(d.nroCote)!.push(d);
+      }
+
+      // Indexar pallets por COTE/código
       const palletsByCote = new Map<string, StockPallet[]>();
       for (const p of palletsData) {
-        const match = p.contenido?.match(/COTE\s*(P\d{4,8})/i) || p.contenido?.match(/(P\d{4,8})/i);
-        const cote = match?.[1]?.toUpperCase();
+        // Usar p.codigo si ya viene parseado, sino extraer del contenido
+        let cote = p.codigo;
+        if (!cote && p.contenido) {
+          const match = p.contenido.match(/COTE\s*(P\d{4,8})/i) || p.contenido.match(/(P\d{4,8})/i);
+          cote = match?.[1]?.toUpperCase() || '';
+        }
         if (!cote) continue;
         if (!palletsByCote.has(cote)) palletsByCote.set(cote, []);
         palletsByCote.get(cote)!.push(p);
       }
 
-      // Construir mapa de COTEs desde depósitos (ingresos)
+      // Construir mapa de COTEs desde TODAS las fuentes:
+      // 1. Stock de pallets (prioridad — es el stock real)
+      // 2. Depósitos (ingresos)
+      // 3. Exportaciones (para COTEs que solo tienen exportación)
       const cotesMap = new Map<string, CoteTrazabilidad>();
 
-      for (const dep of depositos) {
-        const cote = dep.nroCote;
-        if (!cote) continue;
+      // 1. Crear COTEs desde stock de pallets
+      for (const [cote, pallets] of palletsByCote) {
+        const stockCajas = pallets.reduce((s, p) => s + (p.cajas || 0), 0);
+        const stockKg = pallets.reduce((s, p) => s + (p.kilos || 0), 0);
+        const stockProductos = [...new Set(pallets.map(p => p.producto || p.contenido?.substring(0, 40)).filter(Boolean))];
+        const stockContenedores = [...new Set(pallets.map(p => p.contenedor).filter(Boolean))];
 
-        if (!cotesMap.has(cote)) {
-          // Determinar si es retorno (tiene exportación previa)
-          const exps = expByCote.get(cote) || [];
-          const isRetorno = exps.length > 0;
+        const exps = expByCote.get(cote) || [];
+        const deps = depByCote.get(cote) || [];
+        const expRefCajas = exps.reduce((s, e) => s + (e.cantidadEnvases || 0), 0);
+        const expRefTramites = exps.map(e => e.nroTramite).filter(Boolean) as number[];
 
-          // Datos de pallets si existen
-          const pallets = palletsByCote.get(cote) || [];
-          const stockCajas = pallets.reduce((s, p) => s + (p.cajas || 0), 0);
-          const stockKg = pallets.reduce((s, p) => s + (p.kilos || 0), 0);
-          const stockProductos = [...new Set(pallets.map(p => p.producto).filter(Boolean))];
-          const stockContenedores = [...new Set(pallets.map(p => p.contenedor).filter(Boolean))];
+        const ingresoCajas = deps.reduce((s, d) => s + (d.cantidadEnvases || 0), 0);
+        const ingresoKg = deps.reduce((s, d) => s + (d.pesoNeto || 0), 0);
+        const ingresoFechas = deps.map(d => d.fechaEmitidoCote || d.fechaTramite).filter(Boolean);
+        const ingresoCortes = [...new Set(deps.map(d => d.corte).filter(Boolean))];
+        const ingresoDenoms = [...new Set(deps.map(d => d.denominacionMercaderia).filter(Boolean))];
+        const ingresoTramites = deps.map(d => d.nroTramite).filter(Boolean) as number[];
 
-          // Referencias de exportación
-          const expRefCajas = exps.reduce((s, e) => s + (e.cantidadEnvases || 0), 0);
-          const expRefTramites = exps.map(e => e.nroTramite).filter(Boolean) as number[];
+        const saldoTeorico = ingresoCajas - expRefCajas;
+        const diff = stockCajas - saldoTeorico;
 
-          // Ingreso desde depósito
-          const ingresoCajas = dep.cantidadEnvases || 0;
-          const ingresoKg = dep.pesoNeto || 0;
-          const ingresoFechas = dep.fechaEmitidoCote ? [dep.fechaEmitidoCote] : (dep.fechaTramite ? [dep.fechaTramite] : []);
-          const ingresoCortes = dep.corte ? [dep.corte] : [];
-          const ingresoDenoms = dep.denominacionMercaderia ? [dep.denominacionMercaderia] : [];
-          const ingresoTramites = dep.nroTramite ? [dep.nroTramite] : [];
-
-          const saldoTeorico = ingresoCajas - expRefCajas;
-          const diff = stockCajas > 0 ? stockCajas - saldoTeorico : null;
-
-          // Determinar estado y causa
-          let estado = 'EN_STOCK';
-          let causaDiff: string | null = null;
-          let causaDiffDesc = '';
-          if (diff !== null && diff !== 0) {
-            if (isRetorno && diff > 0) {
-              causaDiff = 'A';
-              causaDiffDesc = 'Retorno (mercadería reingresada)';
-            } else if (diff < 0 && exps.length === 0) {
-              estado = 'SIN_REF_EXP';
-              causaDiff = 'D';
-              causaDiffDesc = 'Sin exportación de referencia';
-            } else if (Math.abs(diff) <= 2) {
-              causaDiff = 'E';
-              causaDiffDesc = 'Ajuste menor (±2 cajas)';
-            } else {
-              causaDiff = 'C';
-              causaDiffDesc = 'Diferencia significativa';
-            }
+        let estado = 'EN_STOCK';
+        let causaDiff: string | null = null;
+        let causaDiffDesc = '';
+        if (diff !== 0) {
+          if (exps.length > 0 && diff > 0) {
+            causaDiff = 'A'; causaDiffDesc = 'Retorno (mercadería reingresada)';
+          } else if (diff < 0 && exps.length === 0) {
+            estado = 'SIN_REF_EXP'; causaDiff = 'D'; causaDiffDesc = 'Sin exportación de referencia';
+          } else if (Math.abs(diff) <= 2) {
+            causaDiff = 'E'; causaDiffDesc = 'Ajuste menor (±2 cajas)';
+          } else {
+            causaDiff = 'C'; causaDiffDesc = 'Diferencia significativa';
           }
-          if (ingresoCajas === 0) {
-            estado = 'SIN_INGRESO';
-          }
-
-          cotesMap.set(cote, {
-            cote,
-            tipo: 'DEP',
-            isRetorno,
-            estado,
-            stockPallets: pallets.length,
-            stockCajas,
-            stockKg,
-            stockProductos,
-            stockContenedores,
-            ingresoCajas,
-            ingresoKg,
-            ingresoFechas,
-            ingresoCortes,
-            ingresoDenoms,
-            ingresoTramites,
-            expRefCount: exps.length,
-            expRefCajas,
-            expRefTramites,
-            expOwnCount: 0,
-            expOwnCajas: 0,
-            saldoTeorico,
-            diff,
-            causaDiff,
-            causaDiffDesc,
-          });
-        } else {
-          // COTE ya existe, acumular ingreso
-          const existing = cotesMap.get(cote)!;
-          existing.ingresoCajas += dep.cantidadEnvases || 0;
-          existing.ingresoKg += dep.pesoNeto || 0;
-          if (dep.corte && !existing.ingresoCortes.includes(dep.corte)) existing.ingresoCortes.push(dep.corte);
-          if (dep.denominacionMercaderia && !existing.ingresoDenoms.includes(dep.denominacionMercaderia)) existing.ingresoDenoms.push(dep.denominacionMercaderia);
-          if (dep.nroTramite && !existing.ingresoTramites.includes(dep.nroTramite)) existing.ingresoTramites.push(dep.nroTramite);
-          if (dep.fechaEmitidoCote && !existing.ingresoFechas.includes(dep.fechaEmitidoCote)) existing.ingresoFechas.push(dep.fechaEmitidoCote);
-          existing.saldoTeorico = existing.ingresoCajas - existing.expRefCajas;
-          existing.diff = existing.stockCajas > 0 ? existing.stockCajas - existing.saldoTeorico : null;
         }
+        if (ingresoCajas === 0 && deps.length === 0) {
+          estado = 'SIN_INGRESO';
+        }
+
+        cotesMap.set(cote, {
+          cote, tipo: 'STOCK', isRetorno: exps.length > 0, estado,
+          stockPallets: pallets.length, stockCajas, stockKg, stockProductos, stockContenedores,
+          ingresoCajas, ingresoKg, ingresoFechas, ingresoCortes, ingresoDenoms, ingresoTramites,
+          expRefCount: exps.length, expRefCajas, expRefTramites,
+          expOwnCount: 0, expOwnCajas: 0,
+          saldoTeorico, diff, causaDiff, causaDiffDesc,
+        });
       }
 
-      // También agregar COTEs que solo están en exportaciones (sin depósito)
+      // 2. Agregar COTEs desde depósitos que no están en stock
+      for (const dep of depositos) {
+        const cote = dep.nroCote;
+        if (!cote || cotesMap.has(cote)) continue;
+
+        const exps = expByCote.get(cote) || [];
+        const pallets = palletsByCote.get(cote) || [];
+        const stockCajas = pallets.reduce((s, p) => s + (p.cajas || 0), 0);
+        const stockKg = pallets.reduce((s, p) => s + (p.kilos || 0), 0);
+        const expRefCajas = exps.reduce((s, e) => s + (e.cantidadEnvases || 0), 0);
+        const expRefTramites = exps.map(e => e.nroTramite).filter(Boolean) as number[];
+        const ingresoCajas = dep.cantidadEnvases || 0;
+        const ingresoKg = dep.pesoNeto || 0;
+        const saldoTeorico = ingresoCajas - expRefCajas;
+        const diff = stockCajas > 0 ? stockCajas - saldoTeorico : null;
+
+        let estado = 'EN_STOCK';
+        let causaDiff: string | null = null;
+        let causaDiffDesc = '';
+        if (diff !== null && diff !== 0) {
+          if (exps.length > 0 && diff > 0) { causaDiff = 'A'; causaDiffDesc = 'Retorno'; }
+          else if (diff < 0 && exps.length === 0) { estado = 'SIN_REF_EXP'; causaDiff = 'D'; causaDiffDesc = 'Sin exportación de referencia'; }
+          else if (Math.abs(diff) <= 2) { causaDiff = 'E'; causaDiffDesc = 'Ajuste menor'; }
+          else { causaDiff = 'C'; causaDiffDesc = 'Diferencia significativa'; }
+        }
+
+        cotesMap.set(cote, {
+          cote, tipo: 'DEP', isRetorno: exps.length > 0, estado,
+          stockPallets: pallets.length, stockCajas, stockKg,
+          stockProductos: [], stockContenedores: [],
+          ingresoCajas, ingresoKg,
+          ingresoFechas: dep.fechaEmitidoCote ? [dep.fechaEmitidoCote] : (dep.fechaTramite ? [dep.fechaTramite] : []),
+          ingresoCortes: dep.corte ? [dep.corte] : [],
+          ingresoDenoms: dep.denominacionMercaderia ? [dep.denominacionMercaderia] : [],
+          ingresoTramites: dep.nroTramite ? [dep.nroTramite] : [],
+          expRefCount: exps.length, expRefCajas, expRefTramites,
+          expOwnCount: 0, expOwnCajas: 0,
+          saldoTeorico, diff, causaDiff, causaDiffDesc,
+        });
+      }
+
+      // 3. Agregar COTEs desde exportaciones que no están en stock ni depósitos
       for (const [cote, exps] of expByCote) {
         if (cotesMap.has(cote)) continue;
         const expRefCajas = exps.reduce((s, e) => s + (e.cantidadEnvases || 0), 0);
-        const expRefTramites = exps.map(e => e.nroTramite).filter(Boolean) as number[];
         cotesMap.set(cote, {
-          cote,
-          tipo: 'EXP',
-          isRetorno: false,
-          estado: 'SIN_INGRESO',
-          stockPallets: 0,
-          stockCajas: 0,
-          stockKg: 0,
-          stockProductos: [],
-          stockContenedores: [],
-          ingresoCajas: 0,
-          ingresoKg: 0,
-          ingresoFechas: [],
-          ingresoCortes: [],
-          ingresoDenoms: [],
-          ingresoTramites: [],
-          expRefCount: exps.length,
-          expRefCajas,
-          expRefTramites,
-          expOwnCount: 0,
-          expOwnCajas: 0,
-          saldoTeorico: -expRefCajas,
-          diff: null,
-          causaDiff: 'D',
-          causaDiffDesc: 'Sin ingreso a depósito',
+          cote, tipo: 'EXP', isRetorno: false, estado: 'SIN_INGRESO',
+          stockPallets: 0, stockCajas: 0, stockKg: 0, stockProductos: [], stockContenedores: [],
+          ingresoCajas: 0, ingresoKg: 0, ingresoFechas: [], ingresoCortes: [], ingresoDenoms: [], ingresoTramites: [],
+          expRefCount: exps.length, expRefCajas,
+          expRefTramites: exps.map(e => e.nroTramite).filter(Boolean) as number[],
+          expOwnCount: 0, expOwnCajas: 0,
+          saldoTeorico: -expRefCajas, diff: null, causaDiff: 'D', causaDiffDesc: 'Sin ingreso a depósito',
         });
       }
 
