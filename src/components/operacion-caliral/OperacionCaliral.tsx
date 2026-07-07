@@ -50,8 +50,16 @@ export function OperacionCaliral() {
     Promise.all([loadDepositos(), loadExportaciones()])
       .then(([deps, exps]) => {
         if (!mounted) return;
-        setDepositos(deps);
-        setExportaciones(exps);
+        // FILTRAR: solo registros donde CALIRAL aparece como certificador
+        // o como destino (depósito). Esto excluye registros del MGAP nacional
+        // que corresponden a otros exportadores.
+        const isCaliral = (r: Shipment | ExpRecord): boolean => {
+          const cf = String(r.nombreEstablecimientoCertif || '').toUpperCase();
+          const ed = String(r.nombreEstablecimientoDestino || '').toUpperCase();
+          return cf.includes('CALIRAL') || ed.includes('CALIRAL');
+        };
+        setDepositos(deps.filter(isCaliral));
+        setExportaciones(exps.filter(isCaliral));
       })
       .catch(e => console.error('[operacion-caliral] carga falló:', e))
       .finally(() => mounted && setLoading(false));
