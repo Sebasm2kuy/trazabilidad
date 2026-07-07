@@ -320,6 +320,12 @@ export default function TrazabilidadExplorer() {
     else if (filter === 'sin_ingreso') items = items.filter(c => c.ingresoCajas === 0);
     else if (filter === 'retorno') items = items.filter(c => c.isRetorno);
     else if (filter === 'diff_zero') items = items.filter(c => c.diff === 0);
+    // Ordenar: primero los que tienen stock, luego por saldo descendente
+    items.sort((a, b) => {
+      if (a.stockCajas > 0 && b.stockCajas === 0) return -1;
+      if (a.stockCajas === 0 && b.stockCajas > 0) return 1;
+      return b.saldoTeorico - a.saldoTeorico;
+    });
     return items;
   }, [data, search, filter]);
 
