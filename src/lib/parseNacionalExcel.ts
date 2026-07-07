@@ -94,8 +94,14 @@ export async function parseNacionalExcel(
     const tipoMov = cleanStr(row[20]).toUpperCase();
     const isExport = tipoMov.includes('EXPORT');
     const isDep = tipoMov.includes('DEP') || tipoMov.includes('INGRESO');
-    const proceso = cleanStr(row[59]).toUpperCase();
-    const tpd = proceso.includes('CONGEL') ? 'Congelado' : proceso.includes('FRESC') || proceso.includes('REFRIG') ? 'Fresco' : '';
+
+    // Tipo de producto: el MGAP no tiene una columna específica para esto.
+    // Lo extraemos de la Denominación de Mercadería (col 42) que contiene
+    // palabras como "CONGELADO", "FRESCO", "REFRIGERADO".
+    const denom = cleanStr(row[42]).toUpperCase();
+    const tpd = denom.includes('CONGEL') ? 'Congelado'
+      : denom.includes('FRESC') || denom.includes('REFRIG') ? 'Fresco'
+      : '';
 
     const rec: MovRecord = {
       t: isExport ? 'EXPORTACION' : 'INGRESO',
