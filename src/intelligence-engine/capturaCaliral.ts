@@ -177,7 +177,8 @@ export function generateCapturaInsights(result: CapturaResult, clienteName: stri
   const insights: CapturaInsight[] = [];
   const fmt = (n: number) => n.toLocaleString('es-UY', { maximumFractionDigits: 0 });
 
-  if (result.captureIndex > 0) {
+  // Captura global — solo si hay captura real
+  if (result.captureIndex > 0 && result.caliralPn > 0) {
     insights.push({
       id: 'capture-overall',
       text: `CALIRAL captura el ${result.captureIndex.toFixed(1)}% de las exportaciones de ${clienteName} (${fmt(result.caliralPn)} kg de ${fmt(result.totalClientePn)} kg totales).`,
@@ -185,18 +186,19 @@ export function generateCapturaInsights(result: CapturaResult, clienteName: stri
     });
   }
 
-  // País con menor captura
-  const paisWithCapture = result.byPais.filter(p => p.totalPn > 1000);
-  if (paisWithCapture.length > 0) {
-    const worst = paisWithCapture.reduce((min, p) => p.captureIndex < min.captureIndex ? p : min);
-    if (worst.captureIndex < 30 && worst.totalPn > 5000) {
+  // País con menor captura — SOLO si CALIRAL participó en ese país (caliralPn > 0)
+  // No generar insight de "oportunidad" para países donde CALIRAL tiene 0 kg
+  const paisWithCaliral = result.byPais.filter(p => p.caliralPn > 0 && p.totalPn > 1000);
+  if (paisWithCaliral.length > 0) {
+    const worst = paisWithCaliral.reduce((min, p) => p.captureIndex < min.captureIndex ? p : min);
+    if (worst.captureIndex < 30 && worst.caliralPn > 100) {
       insights.push({
         id: 'capture-pais-worst',
-        text: `En ${worst.label}, CALIRAL solo captura el ${worst.captureIndex.toFixed(1)}% (${fmt(worst.caliralPn)} kg de ${fmt(worst.totalPn)} kg). Oportunidad de crecimiento.`,
+        text: `En ${worst.label}, CALIRAL captura el ${worst.captureIndex.toFixed(1)}% (${fmt(worst.caliralPn)} kg de ${fmt(worst.totalPn)} kg). Oportunidad de crecimiento.`,
         severity: 'opportunity',
       });
     }
-    const best = paisWithCapture.reduce((max, p) => p.captureIndex > max.captureIndex ? p : max);
+    const best = paisWithCaliral.reduce((max, p) => p.captureIndex > max.captureIndex ? p : max);
     if (best.captureIndex > 70 && best.totalPn > 5000) {
       insights.push({
         id: 'capture-pais-best',
@@ -206,30 +208,36 @@ export function generateCapturaInsights(result: CapturaResult, clienteName: stri
     }
   }
 
-  // Países sin CALIRAL
+  // Países sin CALIRAL — solo top 3 por volumen, y solo si el volumen es significativo
   if (result.paisesSinCaliral.length > 0) {
-    const totalPnSinCaliral = result.byPais
-      .filter(p => result.paisesSinCaliral.includes(p.label))
-      .reduce((s, p) => s + p.totalPn, 0);
-    if (totalPnSinCaliral > 1000) {
+    const paisesSinCaliralConVolumen = result.byPais
+      .filter(p => result.paisesSinCaliral.includes(p.label) && p.totalPn > 5000)
+      .sort((a, b) => b.totalPn - a.totalPn)
+      .slice(0, 3);
+    if (paisesSinCaliralConVolumen.length > 0) {
+      const totalPnSinCaliral = paisesSinCaliralConVolumen.reduce((s, p) => s + p.totalPn, 0);
       insights.push({
         id: 'paises-sin-caliral',
-        text: `${result.paisesSinCaliral.length} país(es) atendido(s) por ${clienteName} sin utilizar CALIRAL: ${result.paisesSinCaliral.slice(0, 5).join(', ')}. Volumen no capturado: ${fmt(totalPnSinCaliral)} kg.`,
+        text: `${paisesSinCaliralConVolumen.length} mercado(s) con volumen significativo sin CALIRAL: ${paisesSinCaliralConVolumen.map(p => `${p.label} (${fmt(p.totalPn)} kg)`).join(', ')}. Total no capturado: ${fmt(totalPnSinCaliral)} kg.`,
         severity: 'opportunity',
       });
     }
   }
 
-  // Competidores
-  if (result.competidores.length > 0) {
-    const topCompetitor = result.byCertificador.find(c => !c.label.toUpperCase().includes('CALIRAL'));
-    if (topCompetitor && topCompetitor.totalPn > 1000) {
-      insights.push({
-        id: 'competidor-top',
-        text: `Principal competidor: ${topCompetitor.label} maneja ${fmt(topCompetitor.totalPn)} kg (${(100 - topCompetitor.captureIndex).toFixed(1)}% del volumen de ${clienteName}).`,
-        severity: 'warning',
-      });
-    }
+  // Competidores — excluir al propio cliente (NIREA se autogestiona en algunos casos)
+  const competidoresReales = result.byCertificador.filter(c =>
+    !c.label.toUpperCase().includes('CALIRAL') &&
+    !c.label.toUpperCase().includes('NIREA') &&
+    !c.label.toUpperCase().includes('SAN JACINTO') &&
+    c.totalPn > 1000
+  );
+  if (competidoresReales.length > 0) {
+    const topCompetitor = competidoresReales[0];
+    insights.push({
+      id: 'competidor-top',
+      text: `Principal competidor: ${topCompetitor.label} maneja ${fmt(topCompetitor.totalPn)} kg (${(100 - topCompetitor.captureIndex).toFixed(1)}% del volumen de ${clienteName}).`,
+      severity: 'warning',
+    });
   }
 
   // Tendencia mensual (comparar últimos 3 meses vs 3 anteriores)
