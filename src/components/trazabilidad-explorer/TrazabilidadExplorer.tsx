@@ -287,7 +287,12 @@ export default function TrazabilidadExplorer() {
     window.addEventListener('trazabilidad-data-ready', handler);
     return () => window.removeEventListener('trazabilidad-data-ready', handler);
   }, []);
-  useEffect(() => { if (dataVersion === 0) return; reloadData(); }, [dataVersion, reloadData]);
+  // Recargar cuando cambia dataVersion (después de cargar stock, depósitos, etc.)
+  useEffect(() => {
+    if (dataVersion === 0) return;
+    console.log('[trazabilidad] dataVersion changed:', dataVersion, '- recargando datos...');
+    reloadData();
+  }, [dataVersion]);
 
   const filteredCotes = useMemo(() => {
     if (!data) return [];
