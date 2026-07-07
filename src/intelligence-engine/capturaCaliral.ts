@@ -14,7 +14,7 @@ export const CALIRAL_ID = 'CALIRAL S.A.';
 
 /** Clientes estratégicos conocidos (para autocompletar). */
 export const CLIENTES_ESTRATEGICOS = [
-  { id: 'NIREA', name: 'NIREA SAN JACINTO', aliases: ['NIREA', 'SAN JACINTO', 'NIREA SAN JACINTO'] },
+  { id: 'NIREA', name: 'NIREA SAN JACINTO', aliases: ['NIREA SAN JACINTO', 'NIREA'] },
   { id: 'FRIGORIFICO_SAN_JACINTO', name: 'Frigorífico San Jacinto', aliases: ['FRIGORIFICO SAN JACINTO', 'FRIG. SAN JACINTO'] },
 ];
 
@@ -57,12 +57,19 @@ export interface CapturaBreakdown {
   registros: number;
 }
 
-/** Filtra los registros del dataset nacional que pertenecen a un cliente. */
+/**
+ * Filtra los registros del dataset nacional que pertenecen a un cliente.
+ * IMPORTANTE: solo busca en `p` (productor) y `cf` (certificador/empresa).
+ * NO busca en `ed` (establecimiento destino) porque ese campo puede ser
+ * una ciudad o depósito, no el nombre del cliente, lo que generaría
+ * falsos positivos masivos (ej: "San Jacinto" como ciudad).
+ */
 export function filterByCliente(records: MovRecord[], clienteAliases: string[]): MovRecord[] {
   if (!records.length || !clienteAliases.length) return [];
   const upper = clienteAliases.map(a => a.toUpperCase());
   return records.filter(r => {
-    const fields = [r.cf, r.p, r.np, r.ed].filter(Boolean).map(s => (s || '').toUpperCase());
+    // Solo buscar en productor (p) y certificador (cf)
+    const fields = [r.cf, r.p].filter(Boolean).map(s => (s || '').toUpperCase());
     return upper.some(alias => fields.some(f => f.includes(alias)));
   });
 }
