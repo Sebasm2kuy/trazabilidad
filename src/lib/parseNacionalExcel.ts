@@ -148,6 +148,25 @@ export async function saveNacionalToFirebase(
 ): Promise<void> {
   const totalChunks = Math.ceil(records.length / CHUNK_SIZE);
 
+  // 0. PRIMERO borrar TODOS los chunks existentes antes de guardar los nuevos.
+  // Esto evita que queden chunks viejos con datos incorrectos (ej: pesos en 0
+  // por un bug anterior del parser) mezclados con los nuevos.
+  try {
+    const oldMetaResp = await fetch(`${FB_URL}/mercado_nacional_meta.json`);
+    if (oldMetaResp.ok) {
+      const oldMeta = await oldMetaResp.json();
+      if (oldMeta && oldMeta.totalChunks) {
+        // Borrar hasta max(oldChunks, totalChunks) + 5 por las dudas
+        const maxOldChunks = Math.max(oldMeta.totalChunks, totalChunks) + 10;
+        for (let i = 0; i < maxOldChunks; i++) {
+          try {
+            await fetch(`${FB_URL}/mercado_nacional_data/${i}.json`, { method: 'DELETE' });
+          } catch { /* ignorar */ }
+        }
+      }
+    }
+  } catch { /* ignorar si no hay metadata vieja */ }
+
   // 1. Guardar metadata
   const meta = {
     totalRegistros: records.length,
@@ -162,7 +181,7 @@ export async function saveNacionalToFirebase(
   });
   if (!metaResp.ok) throw new Error(`Error guardando metadata: ${metaResp.status}`);
 
-  // 2. Guardar chunks
+  // 2. Guardar chunks nuevos
   for (let i = 0; i < totalChunks; i++) {
     const chunk = records.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
     const resp = await fetch(`${FB_URL}/mercado_nacional_data/${i}.json`, {
@@ -172,14 +191,6 @@ export async function saveNacionalToFirebase(
     });
     if (!resp.ok) throw new Error(`Error guardando chunk ${i}: ${resp.status}`);
     onProgress?.(i + 1, totalChunks);
-  }
-
-  // 3. Borrar chunks sobrantes (si los hay de una carga anterior más grande)
-  // Intentar borrar los siguientes 5 chunks por las dudas
-  for (let i = totalChunks; i < totalChunks + 5; i++) {
-    try {
-      await fetch(`${FB_URL}/mercado_nacional_data/${i}.json`, { method: 'DELETE' });
-    } catch { /* ignorar si no existen */ }
   }
 }
 
