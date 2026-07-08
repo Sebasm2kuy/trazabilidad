@@ -136,24 +136,24 @@ export function CentroInteligencia() {
 
   // Insights basados en stock real
   const insights = useMemo(() => {
-    const out: { id: string; title: string; description: string; severity: 'positive' | 'negative' | 'warning' | 'opportunity' | 'neutral'; icon: string }[] = [];
+    const out: any[] = [];
     if (stockPallets.length === 0) {
-      out.push({ id: 'ins-empty', title: 'Sin stock cargado', description: 'Subí el Excel de pallets desde Cruces Frimaral o Trazabilidad para ver métricas reales.', severity: 'warning', icon: 'AlertTriangle' });
+      out.push({ id: 'ins-empty', title: 'Sin stock cargado', description: 'Subí el Excel de pallets desde Cruces Frimaral o Trazabilidad para ver métricas reales.', severity: 'warning', icon: 'AlertTriangle', category: 'warning' });
       return out;
     }
-    out.push({ id: 'ins-stock', title: `${stockCotes.length} COTEs en stock`, description: `${(stockTotalKg / 1000).toFixed(1)} t en ${stockPallets.length} pallets. ${stockTotalCajas.toLocaleString('es-UY')} cajas totales.`, severity: 'neutral', icon: 'Warehouse' });
+    out.push({ id: 'ins-stock', title: `${stockCotes.length} COTEs en stock`, description: `${(stockTotalKg / 1000).toFixed(1)} t en ${stockPallets.length} pallets. ${stockTotalCajas.toLocaleString('es-UY')} cajas totales.`, severity: 'neutral', icon: 'Warehouse', category: 'neutral' });
     if (retenidaPallets.length > 0) {
-      out.push({ id: 'ins-retenida', title: `${retenidaPallets.length} pallets retenidos`, description: `${(retenidaPn / 1000).toFixed(1)} t retenidos. Requiere atención inmediata.`, severity: 'negative', icon: 'AlertTriangle' });
+      out.push({ id: 'ins-retenida', title: `${retenidaPallets.length} pallets retenidos`, description: `${(retenidaPn / 1000).toFixed(1)} t retenidos. Requiere atención inmediata.`, severity: 'negative', icon: 'AlertTriangle', category: 'anomaly' });
     }
     if (mayor180Pallets.length > 0) {
-      out.push({ id: 'ins-180', title: `${mayor180Pallets.length} pallets >180 días`, description: `${(mayor180Pn / 1000).toFixed(1)} t sin movimiento por más de 180 días. Stock inmovilizado.`, severity: 'warning', icon: 'Clock' });
+      out.push({ id: 'ins-180', title: `${mayor180Pallets.length} pallets >180 días`, description: `${(mayor180Pn / 1000).toFixed(1)} t sin movimiento por más de 180 días. Stock inmovilizado.`, severity: 'warning', icon: 'Clock', category: 'warning' });
     }
     if (sinDocPallets.length > 0) {
-      out.push({ id: 'ins-sindoc', title: `${sinDocPallets.length} pallets sin COTE`, description: 'Pallets sin código COTE o Pase Sanitario identificado.', severity: 'warning', icon: 'FileText' });
+      out.push({ id: 'ins-sindoc', title: `${sinDocPallets.length} pallets sin COTE`, description: 'Pallets sin código COTE o Pase Sanitario identificado.', severity: 'warning', icon: 'FileText', category: 'warning' });
     }
     const expPn = exportaciones.reduce((s, r) => s + (r.pesoNeto || 0), 0);
     if (expPn > 0) {
-      out.push({ id: 'ins-exp', title: `Exportaciones: ${(expPn / 1000).toFixed(1)} t`, description: `${exportaciones.length} registros de exportación con CALIRAL como certificador o depósito.`, severity: 'positive', icon: 'Ship' });
+      out.push({ id: 'ins-exp', title: `Exportaciones: ${(expPn / 1000).toFixed(1)} t`, description: `${exportaciones.length} registros de exportación con CALIRAL como certificador o depósito.`, severity: 'positive', icon: 'Ship', category: 'milestone' });
     }
     return out;
   }, [stockPallets, stockCotes, stockTotalKg, stockTotalCajas, retenidaPallets, retenidaPn, mayor180Pallets, mayor180Pn, sinDocPallets, exportaciones]);
