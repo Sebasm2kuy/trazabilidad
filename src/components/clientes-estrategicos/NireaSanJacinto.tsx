@@ -270,50 +270,91 @@ export function NireaSanJacinto() {
               </div>
             </div>
 
-            {/* Fila 2: Desglose Depósito vs Certificación */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4 pt-4 border-t border-violet-200 dark:border-violet-900">
-              {/* Depósito — ESTE es el capture index real */}
-              <div className="bg-violet-50/80 dark:bg-violet-950/30 rounded-lg p-4 border-2 border-violet-300 dark:border-violet-800">
-                <div className="flex items-center gap-2 mb-2">
-                  <Warehouse className="w-4 h-4 text-violet-600" />
-                  <p className="text-xs font-bold uppercase tracking-wide text-violet-700 dark:text-violet-300">
-                    Depósito (Captura Real)
-                  </p>
+            {/* Fila 2: Matriz de flujo — Depósito × Certificación */}
+            <div className="mt-4 pt-4 border-t border-violet-200 dark:border-violet-900">
+              <p className="text-xs font-bold uppercase tracking-wide text-slate-600 dark:text-slate-300 mb-3">
+                Matriz de flujo: ¿Dónde depositó? × ¿Quién certificó?
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                {/* Encabezados de columnas */}
+                <div className="text-center text-[10px] font-semibold text-violet-600">CALIRAL certificó</div>
+                <div className="text-center text-[10px] font-semibold text-slate-400">Otro certificó</div>
+
+                {/* Fila 1: Depositó en CALIRAL */}
+                <div className="col-span-2 grid grid-cols-2 gap-2">
+                  {/* A: Caliral depósito + Caliral certificación */}
+                  <div className="bg-emerald-50 dark:bg-emerald-950/30 rounded-lg p-3 border-2 border-emerald-300 dark:border-emerald-800">
+                    <p className="text-[9px] uppercase font-bold text-emerald-700 dark:text-emerald-300 mb-1">
+                      A · CALIRAL depósito + CALIRAL certificación
+                    </p>
+                    <p className="text-lg font-bold text-emerald-700 dark:text-emerald-300 tabular-nums">
+                      {fmtT(result.matrizAPn)}
+                    </p>
+                    <p className="text-[10px] text-slate-500">
+                      {result.matrizACount} registros · flujo 100% CALIRAL
+                    </p>
+                  </div>
+                  {/* B: Caliral depósito + Otro certificación */}
+                  <div className="bg-amber-50 dark:bg-amber-950/30 rounded-lg p-3 border border-amber-300 dark:border-amber-800">
+                    <p className="text-[9px] uppercase font-bold text-amber-700 dark:text-amber-300 mb-1">
+                      B · CALIRAL depósito + Otro certificó
+                    </p>
+                    <p className="text-lg font-bold text-amber-700 dark:text-amber-300 tabular-nums">
+                      {fmtT(result.matrizBPn)}
+                    </p>
+                    <p className="text-[10px] text-slate-500">
+                      {result.matrizBCount} registros · CALIRAL recibió pero perdió la certificación
+                    </p>
+                  </div>
                 </div>
-                <p className="text-2xl font-bold text-violet-700 dark:text-violet-300 tabular-nums">
-                  {fmtT(result.caliralEdPn)}
-                </p>
-                <p className="text-xs text-slate-500 mt-1">
-                  {result.caliralEdCount} registros · mercadería ingresa a CALIRAL
-                </p>
-                <p className="text-[11px] font-semibold text-violet-600 mt-1">
-                  {result.totalClientePn > 0 ? ((result.caliralEdPn / result.totalClientePn) * 100).toFixed(1) : '0'}% del total — ESTE es el índice real
-                </p>
+
+                {/* Fila 2: Depositó en OTRO */}
+                <div className="col-span-2 grid grid-cols-2 gap-2">
+                  {/* C: Otro depósito + Caliral certificación */}
+                  <div className="bg-blue-50 dark:bg-blue-950/30 rounded-lg p-3 border border-blue-300 dark:border-blue-800">
+                    <p className="text-[9px] uppercase font-bold text-blue-700 dark:text-blue-300 mb-1">
+                      C · Otro depósito + CALIRAL certificó
+                    </p>
+                    <p className="text-lg font-bold text-blue-700 dark:text-blue-300 tabular-nums">
+                      {fmtT(result.matrizCPn)}
+                    </p>
+                    <p className="text-[10px] text-slate-500">
+                      {result.matrizCCount} registros · CALIRAL certificó sin tener el depósito
+                    </p>
+                  </div>
+                  {/* D: Otro depósito + Otro certificación */}
+                  <div className="bg-slate-50 dark:bg-slate-900/30 rounded-lg p-3 border border-slate-200 dark:border-slate-800">
+                    <p className="text-[9px] uppercase font-bold text-slate-500 mb-1">
+                      D · Otro depósito + Otro certificó
+                    </p>
+                    <p className="text-lg font-bold text-slate-500 tabular-nums">
+                      {fmtT(result.matrizDPn)}
+                    </p>
+                    <p className="text-[10px] text-slate-400">
+                      {result.matrizDCount} registros · sin participación de CALIRAL
+                    </p>
+                  </div>
+                </div>
               </div>
 
-              {/* Certificación — info complementaria, NO se suma */}
-              <div className="bg-white/40 dark:bg-slate-900/20 rounded-lg p-4 border border-slate-200 dark:border-slate-800">
-                <div className="flex items-center gap-2 mb-2">
-                  <FileText className="w-4 h-4 text-slate-400" />
-                  <p className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                    Certificación (de lo depositado)
+              {/* Totales por columna */}
+              <div className="grid grid-cols-2 gap-2 mt-2 pt-2 border-t border-slate-200 dark:border-slate-800">
+                <div className="text-center">
+                  <p className="text-[10px] text-slate-500">
+                    Total CALIRAL certificó: <strong className="text-violet-700 dark:text-violet-300">{fmtT(result.caliralCfPn)}</strong> ({result.caliralCfCount} regs)
                   </p>
                 </div>
-                <p className="text-2xl font-bold text-slate-500 tabular-nums">
-                  {fmtT(result.caliralCfPn)}
-                </p>
-                <p className="text-xs text-slate-400 mt-1">
-                  {result.caliralCfCount} registros · CALIRAL emite el COTE de exportación
-                </p>
-                <p className="text-[10px] text-slate-400 mt-1 italic">
-                  Es la misma mercadería que ingresó al depósito, ahora certificada para exportar. No se suma al índice.
-                </p>
+                <div className="text-center">
+                  <p className="text-[10px] text-slate-500">
+                    Total CALIRAL depositó: <strong className="text-violet-700 dark:text-violet-300">{fmtT(result.caliralEdPn)}</strong> ({result.caliralEdCount} regs)
+                  </p>
+                </div>
               </div>
             </div>
 
             {/* Nota aclaratoria */}
             <p className="text-[10px] text-slate-400 mt-3 italic">
-              El flujo es: productor → CALIRAL (depósito) → CALIRAL (certificación) → exportación. El índice mide la <strong>captura en depósito</strong>, que es el momento donde CALIRAL gana la mercadería del cliente. La certificación es el paso siguiente, no un flujo independiente.
+              El flujo es: productor → depósito → certificación → exportación. La matriz muestra los 4 escenarios posibles. El <strong>índice de captura</strong> mide cuánto depositó en CALIRAL (A+B). La <strong>certificación</strong> muestra cuánto exportó CALIRAL (A+C). Sin doble conteo: cada registro está en un solo cuadrante.
             </p>
           </Card>
         </div>

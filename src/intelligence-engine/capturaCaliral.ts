@@ -39,6 +39,22 @@ export interface CapturaResult {
   caliralEdPn: number;
   /** CALIRAL como depósito/destino (registros). */
   caliralEdCount: number;
+  /** Matriz A: Caliral depósito + Caliral certificación (kg). */
+  matrizAPn: number;
+  /** Matriz A: registros. */
+  matrizACount: number;
+  /** Matriz B: Caliral depósito + Otro certificador (kg). */
+  matrizBPn: number;
+  /** Matriz B: registros. */
+  matrizBCount: number;
+  /** Matriz C: Otro depósito + Caliral certificación (kg). */
+  matrizCPn: number;
+  /** Matriz C: registros. */
+  matrizCCount: number;
+  /** Matriz D: Otro depósito + Otro certificador (kg). */
+  matrizDPn: number;
+  /** Matriz D: registros. */
+  matrizDCount: number;
   /** Desglose por país. */
   byPais: CapturaBreakdown[];
   /** Desglose por corte. */
@@ -91,6 +107,8 @@ export function computeCapturaCaliral(records: MovRecord[], clienteAliases: stri
       totalClientePn: 0, caliralPn: 0, otrosPn: 0, captureIndex: 0,
       totalRegistros: 0, caliralRegistros: 0,
       caliralCfPn: 0, caliralCfCount: 0, caliralEdPn: 0, caliralEdCount: 0,
+      matrizAPn: 0, matrizACount: 0, matrizBPn: 0, matrizBCount: 0,
+      matrizCPn: 0, matrizCCount: 0, matrizDPn: 0, matrizDCount: 0,
       byPais: [], byCorte: [], byMes: [], byAnio: [], byCertificador: [],
       paisesSinCaliral: [], cortesSinCaliral: [], competidores: [],
     };
@@ -134,6 +152,21 @@ export function computeCapturaCaliral(records: MovRecord[], clienteAliases: stri
   const caliralCfCount = caliralCfRecs.length;
   const caliralEdCount = caliralEdRecs.length;
 
+  // MATRIZ de flujo: depósito × certificación
+  // 4 cuadrantes:
+  // A) Caliral depósito + Caliral certificación (flujo completo CALIRAL)
+  // B) Caliral depósito + Otro certificador (depositó en CALIRAL pero otro certificó)
+  // C) Otro depósito + Caliral certificación (CALIRAL certificó pero no depositó)
+  // D) Otro depósito + Otro certificador (sin CALIRAL)
+  const matrizA = clienteRecs.filter(r => isCaliralEd(r) && isCaliralCf(r));
+  const matrizB = clienteRecs.filter(r => isCaliralEd(r) && !isCaliralCf(r));
+  const matrizC = clienteRecs.filter(r => !isCaliralEd(r) && isCaliralCf(r));
+  const matrizD = clienteRecs.filter(r => !isCaliralEd(r) && !isCaliralCf(r));
+  const matrizAPn = matrizA.reduce((s, r) => s + (r.pn || 0), 0);
+  const matrizBPn = matrizB.reduce((s, r) => s + (r.pn || 0), 0);
+  const matrizCPn = matrizC.reduce((s, r) => s + (r.pn || 0), 0);
+  const matrizDPn = matrizD.reduce((s, r) => s + (r.pn || 0), 0);
+
   // Desgloses — usar isCaliralEd para los breakdowns (depósito = captura real)
   const byPais = breakdownBy(clienteRecs, r => r.pa || '—', isCaliralEd);
   const byCorte = breakdownBy(clienteRecs, r => r.co || '—', isCaliralEd);
@@ -162,6 +195,10 @@ export function computeCapturaCaliral(records: MovRecord[], clienteAliases: stri
     totalRegistros: clienteRecs.length,
     caliralRegistros: caliralRecs.length,
     caliralCfPn, caliralCfCount, caliralEdPn, caliralEdCount,
+    matrizAPn, matrizACount: matrizA.length,
+    matrizBPn, matrizBCount: matrizB.length,
+    matrizCPn, matrizCCount: matrizC.length,
+    matrizDPn, matrizDCount: matrizD.length,
     byPais, byCorte, byMes, byAnio, byCertificador,
     paisesSinCaliral, cortesSinCaliral, competidores,
   };
