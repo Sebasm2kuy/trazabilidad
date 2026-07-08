@@ -11,6 +11,7 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   TrendingUp, TrendingDown, Target, Globe, Package, Users,
   Calendar, Building2, Lightbulb, AlertCircle, Activity,
+  FileText, Warehouse,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Card } from '@/components/ui/card';
@@ -230,34 +231,29 @@ export function NireaSanJacinto() {
         </div>
       </div>
 
-      {/* KPI PRINCIPAL — Índice de Captura */}
+      {/* KPI PRINCIPAL — Índice de Captura con desglose Certificación vs Depósito */}
       <div className="px-8 pb-6">
         <div className="max-w-6xl mx-auto">
           <Card className="p-6 bg-gradient-to-br from-violet-50 to-blue-50 dark:from-violet-950/30 dark:to-blue-950/30 border-violet-200 dark:border-violet-900">
-            <div className="flex items-start justify-between gap-6">
+            {/* Fila 1: Índice total */}
+            <div className="flex items-start justify-between gap-6 mb-4">
               <div className="flex-1">
                 <p className="text-xs uppercase tracking-wider text-slate-500 font-semibold mb-1">
-                  Índice de Captura CALIRAL
+                  Índice de Captura CALIRAL (Total)
                 </p>
                 <div className="flex items-baseline gap-3">
                   <p className="text-5xl font-bold text-violet-700 dark:text-violet-300 tabular-nums">
                     {fmtPct(result.captureIndex)}
                   </p>
-                  {result.captureIndex > 0 && result.captureIndex < 1 && (
-                    <p className="text-sm font-medium text-violet-600 dark:text-violet-400">
-                      ({fmt(result.caliralPn)} kg de {fmt(result.totalClientePn)} kg)
-                    </p>
-                  )}
                 </div>
                 <p className="text-sm text-slate-600 dark:text-slate-300 mt-2">
-                  CALIRAL gestionó <strong>{fmtT(result.caliralPn)}</strong> de <strong>{fmtT(result.totalClientePn)}</strong> exportados por {NIREA_NAME}.
+                  CALIRAL participó en <strong>{fmtT(result.caliralPn)}</strong> de <strong>{fmtT(result.totalClientePn)}</strong> exportados por {NIREA_NAME}.
                 </p>
                 <p className="text-xs text-slate-500 mt-1">
-                  Resto: <strong>{fmtT(result.otrosPn)}</strong> vía {result.competidores.length} certificador(es) competidor(es).
+                  Vía otros: <strong>{fmtT(result.otrosPn)}</strong> ({result.competidores.length} certificador(es) externos).
                 </p>
               </div>
               <div className="hidden md:block w-32 h-32 relative">
-                {/* Donut SVG simple — si el % es muy chico, mostrar un mínimo visible */}
                 <svg viewBox="0 0 100 100" className="w-full h-full -rotate-90">
                   <circle cx="50" cy="50" r="42" fill="none" stroke="#e2e8f0" strokeWidth="10" />
                   <circle
@@ -273,6 +269,52 @@ export function NireaSanJacinto() {
                 </div>
               </div>
             </div>
+
+            {/* Fila 2: Desglose Certificación vs Depósito */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4 pt-4 border-t border-violet-200 dark:border-violet-900">
+              {/* Certificación */}
+              <div className="bg-white/60 dark:bg-slate-900/40 rounded-lg p-4 border border-violet-200 dark:border-violet-900">
+                <div className="flex items-center gap-2 mb-2">
+                  <FileText className="w-4 h-4 text-violet-600" />
+                  <p className="text-xs font-bold uppercase tracking-wide text-violet-700 dark:text-violet-300">
+                    Como Certificador
+                  </p>
+                </div>
+                <p className="text-2xl font-bold text-violet-700 dark:text-violet-300 tabular-nums">
+                  {fmtT(result.caliralCfPn)}
+                </p>
+                <p className="text-xs text-slate-500 mt-1">
+                  {result.caliralCfCount} registros · CALIRAL emite el COTE
+                </p>
+                <p className="text-[11px] text-slate-400 mt-1">
+                  {result.totalClientePn > 0 ? ((result.caliralCfPn / result.totalClientePn) * 100).toFixed(1) : '0'}% del total de {NIREA_NAME}
+                </p>
+              </div>
+
+              {/* Depósito */}
+              <div className="bg-white/60 dark:bg-slate-900/40 rounded-lg p-4 border border-blue-200 dark:border-blue-900">
+                <div className="flex items-center gap-2 mb-2">
+                  <Warehouse className="w-4 h-4 text-blue-600" />
+                  <p className="text-xs font-bold uppercase tracking-wide text-blue-700 dark:text-blue-300">
+                    Como Depósito (Destino)
+                  </p>
+                </div>
+                <p className="text-2xl font-bold text-blue-700 dark:text-blue-300 tabular-nums">
+                  {fmtT(result.caliralEdPn)}
+                </p>
+                <p className="text-xs text-slate-500 mt-1">
+                  {result.caliralEdCount} registros · mercadería pasa por CALIRAL
+                </p>
+                <p className="text-[11px] text-slate-400 mt-1">
+                  {result.totalClientePn > 0 ? ((result.caliralEdPn / result.totalClientePn) * 100).toFixed(1) : '0'}% del total de {NIREA_NAME}
+                </p>
+              </div>
+            </div>
+
+            {/* Nota aclaratoria */}
+            <p className="text-[10px] text-slate-400 mt-3 italic">
+              El Índice de Captura combina ambos roles (certificación + depósito). Un mismo registro puede contar en ambas categorías si CALIRAL certifica y además la mercadería pasa por su depósito.
+            </p>
           </Card>
         </div>
       </div>

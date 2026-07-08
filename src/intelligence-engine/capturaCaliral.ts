@@ -21,7 +21,7 @@ export const CLIENTES_ESTRATEGICOS = [
 export interface CapturaResult {
   /** Total exportado por el cliente (kg). */
   totalClientePn: number;
-  /** Total exportado a través de CALIRAL (kg). */
+  /** Total exportado a través de CALIRAL (kg) — certificación OR depósito. */
   caliralPn: number;
   /** Total exportado a través de otros certificadores (kg). */
   otrosPn: number;
@@ -31,6 +31,14 @@ export interface CapturaResult {
   totalRegistros: number;
   /** Registros a través de CALIRAL. */
   caliralRegistros: number;
+  /** CALIRAL como certificador (kg). */
+  caliralCfPn: number;
+  /** CALIRAL como certificador (registros). */
+  caliralCfCount: number;
+  /** CALIRAL como depósito/destino (kg). */
+  caliralEdPn: number;
+  /** CALIRAL como depósito/destino (registros). */
+  caliralEdCount: number;
   /** Desglose por país. */
   byPais: CapturaBreakdown[];
   /** Desglose por corte. */
@@ -82,19 +90,23 @@ export function computeCapturaCaliral(records: MovRecord[], clienteAliases: stri
     return {
       totalClientePn: 0, caliralPn: 0, otrosPn: 0, captureIndex: 0,
       totalRegistros: 0, caliralRegistros: 0,
+      caliralCfPn: 0, caliralCfCount: 0, caliralEdPn: 0, caliralEdCount: 0,
       byPais: [], byCorte: [], byMes: [], byAnio: [], byCertificador: [],
       paisesSinCaliral: [], cortesSinCaliral: [], competidores: [],
     };
   }
 
-  // Identificar registros que pasaron por CALIRAL.
-  // CALIRAL puede aparecer como `cf` (certificador) en registros donde el
-  // cliente es el productor (p). O como `ed` (establecimiento destino).
-  const isCaliral = (r: MovRecord): boolean => {
-    const cf = (r.cf || '').toUpperCase();
-    const ed = (r.ed || '').toUpperCase();
-    return cf.includes('CALIRAL') || ed.includes('CALIRAL');
+  // Identificar registros donde CALIRAL participa.
+  // CALIRAL puede aparecer de DOS formas:
+  // 1. Como CERTIFICADOR (cf) — CALIRAL emite el COTE
+  // 2. Como DEPÓSITO/DESTINO (ed) — la mercadería pasa por el depósito de CALIRAL
+  const isCaliralCf = (r: MovRecord): boolean => {
+    return (r.cf || '').toUpperCase().includes('CALIRAL');
   };
+  const isCaliralEd = (r: MovRecord): boolean => {
+    return (r.ed || '').toUpperCase().includes('CALIRAL');
+  };
+  const isCaliral = (r: MovRecord): boolean => isCaliralCf(r) || isCaliralEd(r);
 
   const caliralRecs = clienteRecs.filter(isCaliral);
   const otrosRecs = clienteRecs.filter(r => !isCaliral(r));
@@ -103,6 +115,12 @@ export function computeCapturaCaliral(records: MovRecord[], clienteAliases: stri
   const caliralPn = caliralRecs.reduce((s, r) => s + (r.pn || 0), 0);
   const otrosPn = otrosRecs.reduce((s, r) => s + (r.pn || 0), 0);
   const captureIndex = totalClientePn > 0 ? (caliralPn / totalClientePn) * 100 : 0;
+
+  // Desglose CALIRAL: certificación vs depósito
+  const caliralCfPn = clienteRecs.filter(isCaliralCf).reduce((s, r) => s + (r.pn || 0), 0);
+  const caliralEdPn = clienteRecs.filter(isCaliralEd).reduce((s, r) => s + (r.pn || 0), 0);
+  const caliralCfCount = clienteRecs.filter(isCaliralCf).length;
+  const caliralEdCount = clienteRecs.filter(isCaliralEd).length;
 
   // Desgloses
   const byPais = breakdownBy(clienteRecs, r => r.pa || '—', isCaliral);
@@ -131,6 +149,7 @@ export function computeCapturaCaliral(records: MovRecord[], clienteAliases: stri
     totalClientePn, caliralPn, otrosPn, captureIndex,
     totalRegistros: clienteRecs.length,
     caliralRegistros: caliralRecs.length,
+    caliralCfPn, caliralCfCount, caliralEdPn, caliralEdCount,
     byPais, byCorte, byMes, byAnio, byCertificador,
     paisesSinCaliral, cortesSinCaliral, competidores,
   };
