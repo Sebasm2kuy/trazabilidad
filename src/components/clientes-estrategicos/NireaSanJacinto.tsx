@@ -313,7 +313,7 @@ export function NireaSanJacinto() {
 
             {/* Nota aclaratoria */}
             <p className="text-[10px] text-slate-400 mt-3 italic">
-              El Índice de Captura combina ambos roles (certificación + depósito). Un mismo registro puede contar en ambas categorías si CALIRAL certifica y además la mercadería pasa por su depósito.
+              El Índice de Captura cuenta cada registro una sola vez. Si CALIRAL aparece como certificador y como depósito en el mismo registro, se cuenta una vez. En este período no hay registros con doble rol.
             </p>
           </Card>
         </div>
