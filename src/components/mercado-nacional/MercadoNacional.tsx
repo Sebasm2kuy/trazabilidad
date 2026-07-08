@@ -465,6 +465,19 @@ export default function MercadoNacional() {
                   }
                 }
                 if (allRecords.length > 0 && !cancelled) {
+                  // POST-PROCESAMIENTO: derivar tpd (tipo de producto) del campo d (denominación)
+                  // si está vacío. Los datos antiguos en Firebase tienen tpd vacío
+                  // porque se subieron con un parser que no extraía este campo.
+                  for (const r of allRecords) {
+                    if (!r.tpd) {
+                      const denom = (r.d || '').toUpperCase();
+                      if (denom.includes('CONGEL')) {
+                        r.tpd = 'Congelado';
+                      } else if (denom.includes('FRESC') || denom.includes('REFRIG')) {
+                        r.tpd = 'Fresco';
+                      }
+                    }
+                  }
                   setRecords(allRecords);
                   setLoadProgress('');
                   setLoadingRecords(false);
