@@ -233,9 +233,10 @@ export function generateCapturaInsights(result: CapturaResult, clienteName: stri
   );
   if (competidoresReales.length > 0) {
     const topCompetitor = competidoresReales[0];
+    const pctDelTotal = result.totalClientePn > 0 ? (topCompetitor.totalPn / result.totalClientePn) * 100 : 0;
     insights.push({
       id: 'competidor-top',
-      text: `Principal competidor: ${topCompetitor.label} maneja ${fmt(topCompetitor.totalPn)} kg (${(100 - topCompetitor.captureIndex).toFixed(1)}% del volumen de ${clienteName}).`,
+      text: `Principal competidor: ${topCompetitor.label} maneja ${fmt(topCompetitor.totalPn)} kg (${pctDelTotal.toFixed(1)}% del volumen de ${clienteName}).`,
       severity: 'warning',
     });
   }
