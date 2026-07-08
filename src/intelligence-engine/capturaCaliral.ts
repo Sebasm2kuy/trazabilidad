@@ -134,14 +134,14 @@ export function computeCapturaCaliral(records: MovRecord[], clienteAliases: stri
   const caliralCfCount = caliralCfRecs.length;
   const caliralEdCount = caliralEdRecs.length;
 
-  // Desgloses
-  const byPais = breakdownBy(clienteRecs, r => r.pa || '—', isCaliral);
-  const byCorte = breakdownBy(clienteRecs, r => r.co || '—', isCaliral);
-  const byMes = breakdownBy(clienteRecs, r => (r.f || '').substring(0, 7) || '—', isCaliral)
+  // Desgloses — usar isCaliralEd para los breakdowns (depósito = captura real)
+  const byPais = breakdownBy(clienteRecs, r => r.pa || '—', isCaliralEd);
+  const byCorte = breakdownBy(clienteRecs, r => r.co || '—', isCaliralEd);
+  const byMes = breakdownBy(clienteRecs, r => (r.f || '').substring(0, 7) || '—', isCaliralEd)
     .sort((a, b) => a.label.localeCompare(b.label));
-  const byAnio = breakdownBy(clienteRecs, r => (r.f || '').substring(0, 4) || '—', isCaliral)
+  const byAnio = breakdownBy(clienteRecs, r => (r.f || '').substring(0, 4) || '—', isCaliralEd)
     .sort((a, b) => a.label.localeCompare(b.label));
-  const byCertificador = breakdownBy(clienteRecs, r => r.cf || '—', isCaliral)
+  const byCertificador = breakdownBy(clienteRecs, r => r.cf || '—', isCaliralEd)
     .sort((a, b) => b.totalPn - a.totalPn);
 
   // Países donde CALIRAL no participó
