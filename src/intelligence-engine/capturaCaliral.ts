@@ -98,29 +98,41 @@ export function computeCapturaCaliral(records: MovRecord[], clienteAliases: stri
 
   // Identificar registros donde CALIRAL participa.
   // CALIRAL puede aparecer de DOS formas:
-  // 1. Como CERTIFICADOR (cf) — CALIRAL emite el COTE
-  // 2. Como DEPÓSITO/DESTINO (ed) — la mercadería pasa por el depósito de CALIRAL
+  // 1. Como DEPÓSITO/DESTINO (ed) — la mercadería ingresa al depósito de CALIRAL
+  // 2. Como CERTIFICADOR (cf) — CALIRAL emite el COTE de exportación
+  //
+  // FLUJO REAL: la mercadería primero ingresa a CALIRAL (ed), luego CALIRAL
+  // la certifica y exporta (cf). La certificación es CONSECUENCIA del depósito,
+  // no un flujo independiente. Las toneladas certificadas ya están incluidas
+  // en las toneladas depositadas.
+  //
+  // Por lo tanto, el ÍNDICE DE CAPTURA se calcula sobre el DEPÓSITO (ed),
+  // que es el momento donde CALIRAL captura la mercadería del cliente.
+  // La certificación se muestra como información complementaria, no se suma.
   const isCaliralCf = (r: MovRecord): boolean => {
     return (r.cf || '').toUpperCase().includes('CALIRAL');
   };
   const isCaliralEd = (r: MovRecord): boolean => {
     return (r.ed || '').toUpperCase().includes('CALIRAL');
   };
-  const isCaliral = (r: MovRecord): boolean => isCaliralCf(r) || isCaliralEd(r);
 
-  const caliralRecs = clienteRecs.filter(isCaliral);
-  const otrosRecs = clienteRecs.filter(r => !isCaliral(r));
+  // Para el capture index: usar SOLO depósito (ed) como captura real
+  // La certificación (cf) se muestra como info complementaria pero no se suma
+  const caliralEdRecs = clienteRecs.filter(isCaliralEd);
+  const caliralCfRecs = clienteRecs.filter(isCaliralCf);
+  const caliralRecs = caliralEdRecs; // El capture index se basa en depósito
+  const otrosRecs = clienteRecs.filter(r => !isCaliralEd(r));
 
   const totalClientePn = clienteRecs.reduce((s, r) => s + (r.pn || 0), 0);
-  const caliralPn = caliralRecs.reduce((s, r) => s + (r.pn || 0), 0);
-  const otrosPn = otrosRecs.reduce((s, r) => s + (r.pn || 0), 0);
+  const caliralPn = caliralEdRecs.reduce((s, r) => s + (r.pn || 0), 0); // Solo depósito
+  const otrosPn = totalClientePn - caliralPn;
   const captureIndex = totalClientePn > 0 ? (caliralPn / totalClientePn) * 100 : 0;
 
-  // Desglose CALIRAL: certificación vs depósito
-  const caliralCfPn = clienteRecs.filter(isCaliralCf).reduce((s, r) => s + (r.pn || 0), 0);
-  const caliralEdPn = clienteRecs.filter(isCaliralEd).reduce((s, r) => s + (r.pn || 0), 0);
-  const caliralCfCount = clienteRecs.filter(isCaliralCf).length;
-  const caliralEdCount = clienteRecs.filter(isCaliralEd).length;
+  // Desglose CALIRAL: certificación vs depósito (informativo, no se suman)
+  const caliralCfPn = caliralCfRecs.reduce((s, r) => s + (r.pn || 0), 0);
+  const caliralEdPn = caliralEdRecs.reduce((s, r) => s + (r.pn || 0), 0);
+  const caliralCfCount = caliralCfRecs.length;
+  const caliralEdCount = caliralEdRecs.length;
 
   // Desgloses
   const byPais = breakdownBy(clienteRecs, r => r.pa || '—', isCaliral);

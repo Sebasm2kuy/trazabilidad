@@ -270,50 +270,50 @@ export function NireaSanJacinto() {
               </div>
             </div>
 
-            {/* Fila 2: Desglose Certificación vs Depósito */}
+            {/* Fila 2: Desglose Depósito vs Certificación */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4 pt-4 border-t border-violet-200 dark:border-violet-900">
-              {/* Certificación */}
-              <div className="bg-white/60 dark:bg-slate-900/40 rounded-lg p-4 border border-violet-200 dark:border-violet-900">
+              {/* Depósito — ESTE es el capture index real */}
+              <div className="bg-violet-50/80 dark:bg-violet-950/30 rounded-lg p-4 border-2 border-violet-300 dark:border-violet-800">
                 <div className="flex items-center gap-2 mb-2">
-                  <FileText className="w-4 h-4 text-violet-600" />
+                  <Warehouse className="w-4 h-4 text-violet-600" />
                   <p className="text-xs font-bold uppercase tracking-wide text-violet-700 dark:text-violet-300">
-                    Como Certificador
+                    Depósito (Captura Real)
                   </p>
                 </div>
                 <p className="text-2xl font-bold text-violet-700 dark:text-violet-300 tabular-nums">
-                  {fmtT(result.caliralCfPn)}
-                </p>
-                <p className="text-xs text-slate-500 mt-1">
-                  {result.caliralCfCount} registros · CALIRAL emite el COTE
-                </p>
-                <p className="text-[11px] text-slate-400 mt-1">
-                  {result.totalClientePn > 0 ? ((result.caliralCfPn / result.totalClientePn) * 100).toFixed(1) : '0'}% del total de {NIREA_NAME}
-                </p>
-              </div>
-
-              {/* Depósito */}
-              <div className="bg-white/60 dark:bg-slate-900/40 rounded-lg p-4 border border-blue-200 dark:border-blue-900">
-                <div className="flex items-center gap-2 mb-2">
-                  <Warehouse className="w-4 h-4 text-blue-600" />
-                  <p className="text-xs font-bold uppercase tracking-wide text-blue-700 dark:text-blue-300">
-                    Como Depósito (Destino)
-                  </p>
-                </div>
-                <p className="text-2xl font-bold text-blue-700 dark:text-blue-300 tabular-nums">
                   {fmtT(result.caliralEdPn)}
                 </p>
                 <p className="text-xs text-slate-500 mt-1">
-                  {result.caliralEdCount} registros · mercadería pasa por CALIRAL
+                  {result.caliralEdCount} registros · mercadería ingresa a CALIRAL
                 </p>
-                <p className="text-[11px] text-slate-400 mt-1">
-                  {result.totalClientePn > 0 ? ((result.caliralEdPn / result.totalClientePn) * 100).toFixed(1) : '0'}% del total de {NIREA_NAME}
+                <p className="text-[11px] font-semibold text-violet-600 mt-1">
+                  {result.totalClientePn > 0 ? ((result.caliralEdPn / result.totalClientePn) * 100).toFixed(1) : '0'}% del total — ESTE es el índice real
+                </p>
+              </div>
+
+              {/* Certificación — info complementaria, NO se suma */}
+              <div className="bg-white/40 dark:bg-slate-900/20 rounded-lg p-4 border border-slate-200 dark:border-slate-800">
+                <div className="flex items-center gap-2 mb-2">
+                  <FileText className="w-4 h-4 text-slate-400" />
+                  <p className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                    Certificación (de lo depositado)
+                  </p>
+                </div>
+                <p className="text-2xl font-bold text-slate-500 tabular-nums">
+                  {fmtT(result.caliralCfPn)}
+                </p>
+                <p className="text-xs text-slate-400 mt-1">
+                  {result.caliralCfCount} registros · CALIRAL emite el COTE de exportación
+                </p>
+                <p className="text-[10px] text-slate-400 mt-1 italic">
+                  Es la misma mercadería que ingresó al depósito, ahora certificada para exportar. No se suma al índice.
                 </p>
               </div>
             </div>
 
             {/* Nota aclaratoria */}
             <p className="text-[10px] text-slate-400 mt-3 italic">
-              El Índice de Captura cuenta cada registro una sola vez. Si CALIRAL aparece como certificador y como depósito en el mismo registro, se cuenta una vez. En este período no hay registros con doble rol.
+              El flujo es: productor → CALIRAL (depósito) → CALIRAL (certificación) → exportación. El índice mide la <strong>captura en depósito</strong>, que es el momento donde CALIRAL gana la mercadería del cliente. La certificación es el paso siguiente, no un flujo independiente.
             </p>
           </Card>
         </div>
