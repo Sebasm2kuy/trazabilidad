@@ -225,18 +225,37 @@ export function generateCapturaInsights(result: CapturaResult, clienteName: stri
   }
 
   // Competidores — excluir al propio cliente (NIREA se autogestiona en algunos casos)
+  // y excluir CALIRAL (es el que estamos midiendo)
   const competidoresReales = result.byCertificador.filter(c =>
     !c.label.toUpperCase().includes('CALIRAL') &&
     !c.label.toUpperCase().includes('NIREA') &&
     !c.label.toUpperCase().includes('SAN JACINTO') &&
     c.totalPn > 1000
   );
+
+  // Calcular % de autogestión del cliente (cuando el cliente es su propio certificador)
+  const autogestion = result.byCertificador.find(c =>
+    c.label.toUpperCase().includes('NIREA') || c.label.toUpperCase().includes('SAN JACINTO')
+  );
+  const pctAutogestion = autogestion && result.totalClientePn > 0
+    ? (autogestion.totalPn / result.totalClientePn) * 100
+    : 0;
+
+  if (pctAutogestion > 10) {
+    insights.push({
+      id: 'autogestion',
+      text: `${clienteName} autogestiona el ${pctAutogestion.toFixed(1)}% de sus exportaciones (certifica directamente sin depósitos intermedios).`,
+      severity: 'neutral',
+    });
+  }
+
   if (competidoresReales.length > 0) {
     const topCompetitor = competidoresReales[0];
     const pctDelTotal = result.totalClientePn > 0 ? (topCompetitor.totalPn / result.totalClientePn) * 100 : 0;
+    const otrosCompetidores = competidoresReales.length - 1;
     insights.push({
       id: 'competidor-top',
-      text: `Principal competidor: ${topCompetitor.label} maneja ${fmt(topCompetitor.totalPn)} kg (${pctDelTotal.toFixed(1)}% del volumen de ${clienteName}).`,
+      text: `Principal competidor: ${topCompetitor.label} maneja ${fmt(topCompetitor.totalPn)} kg (${pctDelTotal.toFixed(1)}% del volumen de ${clienteName})${otrosCompetidores > 0 ? `. Otros ${otrosCompetidores} competidor(es) manejan el resto.` : '.'}`,
       severity: 'warning',
     });
   }
