@@ -241,21 +241,27 @@ export function generateCapturaInsights(result: CapturaResult, clienteName: stri
     ? (autogestion.totalPn / result.totalClientePn) * 100
     : 0;
 
-  if (pctAutogestion > 10) {
-    insights.push({
-      id: 'autogestion',
-      text: `${clienteName} autogestiona el ${pctAutogestion.toFixed(1)}% de sus exportaciones (certifica directamente sin depósitos intermedios).`,
-      severity: 'neutral',
-    });
+  // Insight: desglose completo de cómo se reparte el volumen
+  const desglose: string[] = [];
+  for (const c of result.byCertificador.slice(0, 5)) {
+    const pct = result.totalClientePn > 0 ? (c.totalPn / result.totalClientePn) * 100 : 0;
+    const isCaliralCf = c.label.toUpperCase().includes('CALIRAL');
+    const isSelf = c.label.toUpperCase().includes('NIREA') || c.label.toUpperCase().includes('SAN JACINTO');
+    const label = isCaliralCf ? 'CALIRAL (certificador)' : isSelf ? `${clienteName} (autogestión)` : c.label;
+    desglose.push(`${label}: ${pct.toFixed(1)}% (${fmt(c.totalPn)} kg)`);
   }
+  insights.push({
+    id: 'desglose-certificadores',
+    text: `Desglose del volumen: ${desglose.join(' | ')}.`,
+    severity: 'neutral',
+  });
 
   if (competidoresReales.length > 0) {
     const topCompetitor = competidoresReales[0];
     const pctDelTotal = result.totalClientePn > 0 ? (topCompetitor.totalPn / result.totalClientePn) * 100 : 0;
-    const otrosCompetidores = competidoresReales.length - 1;
     insights.push({
       id: 'competidor-top',
-      text: `Principal competidor: ${topCompetitor.label} maneja ${fmt(topCompetitor.totalPn)} kg (${pctDelTotal.toFixed(1)}% del volumen de ${clienteName})${otrosCompetidores > 0 ? `. Otros ${otrosCompetidores} competidor(es) manejan el resto.` : '.'}`,
+      text: `Mayor competidor externo: ${topCompetitor.label} maneja ${fmt(topCompetitor.totalPn)} kg (${pctDelTotal.toFixed(1)}% del volumen de ${clienteName}). CALIRAL captura el ${result.captureIndex.toFixed(1)}%.`,
       severity: 'warning',
     });
   }
