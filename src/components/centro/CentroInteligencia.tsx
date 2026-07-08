@@ -48,6 +48,9 @@ import { useEntityDrawer } from '@/store/useEntityDrawer';
 import { UniversalSearch } from './UniversalSearch';
 import { EntityDrawer } from './EntityDrawer';
 import type { Shipment, ExpRecord } from '@/lib/types';
+import type { StockPallet, StockLoad } from '@/lib/parseStockXls';
+
+const DAY_MS = 1000 * 60 * 60 * 24;
 
 export function CentroInteligencia() {
   const [loading, setLoading] = useState(true);
@@ -62,46 +65,159 @@ export function CentroInteligencia() {
   // Carga de datos
   const [depositos, setDepositos] = useState<(Shipment | ExpRecord)[]>([]);
   const [exportaciones, setExportaciones] = useState<(Shipment | ExpRecord)[]>([]);
+  const [stockPallets, setStockPallets] = useState<StockPallet[]>([]);
 
   useEffect(() => {
     let mounted = true;
     Promise.all([loadDepositos(), loadExportaciones()])
       .then(([deps, exps]) => {
         if (!mounted) return;
-        setDepositos(deps);
-        setExportaciones(exps);
+        // FILTRAR: solo registros donde CALIRAL aparece como certificador o destino
+        const isCaliral = (r: Shipment | ExpRecord): boolean => {
+          const cf = String(r.nombreEstablecimientoCertif || '').toUpperCase();
+          const ed = String(r.nombreEstablecimientoDestino || '').toUpperCase();
+          return cf.includes('CALIRAL') || ed.includes('CALIRAL');
+        };
+        setDepositos(deps.filter(isCaliral));
+        setExportaciones(exps.filter(isCaliral));
+
+        // Leer stock de pallets desde localStorage (mismo lugar que Cruces Frimaral)
+        try {
+          const raw = localStorage.getItem('trazabilidad_stock_data');
+          if (raw) {
+            const load: StockLoad = JSON.parse(raw);
+            setStockPallets(load.pallets || []);
+          }
+        } catch { /* noop */ }
       })
       .catch((e) => console.error('[centro] carga falló:', e))
       .finally(() => mounted && setLoading(false));
     return () => { mounted = false; };
   }, [tick]);
 
-  // Cómputos de dominio
-  const stock = useMemo(() => buildStockItems(depositos, exportaciones), [depositos, exportaciones]);
-  const productores = useMemo(() => buildProducers(depositos), [depositos]);
-  const alerts = useMemo(() => runRules({ stock, productores, depositos: [] }), [stock, productores]);
-  const activity = useMemo(() => buildActivityEvents(depositos, exportaciones, 30), [depositos, exportaciones]);
-  const insights = useMemo(() => generateOperationalInsights({ stock, productores, alerts, activity }), [stock, productores, alerts, activity]);
-  const kpis = useMemo(() => getMainKPIs({
-    stock, productores, alerts, activity,
-    exportacionesPn: exportaciones.reduce((s, r) => s + (r.pesoNeto || 0), 0),
-    depositosPn: depositos.reduce((s, r) => s + (r.pesoNeto || 0), 0),
-  }), [stock, productores, alerts, activity, exportaciones, depositos]);
+  // --- Cálculos operativos basados en STOCK REAL de pallets ---
+  const stockTotalKg = useMemo(() => stockPallets.reduce((s, p) => s + (p.kilos || 0), 0), [stockPallets]);
+  const stockTotalCajas = useMemo(() => stockPallets.reduce((s, p) => s + (p.cajas || 0), 0), [stockPallets]);
+  const stockCotes = useMemo(() => {
+    const set = new Set<string>();
+    for (const p of stockPallets) {
+      if (p.codigo) set.add(p.codigo);
+    }
+    return Array.from(set);
+  }, [stockPallets]);
+
+  const retenidaPallets = useMemo(() => stockPallets.filter(p => {
+    const c = (p.contenido || '').toUpperCase();
+    return c.includes('RETENIDO');
+  }), [stockPallets]);
+  const retenidaPn = retenidaPallets.reduce((s, p) => s + (p.kilos || 0), 0);
+
+  const mayor180Pallets = useMemo(() => stockPallets.filter(p => {
+    if (!p.fechaComision) return false;
+    const d = new Date(p.fechaComision);
+    if (isNaN(d.getTime())) return false;
+    return Math.floor((Date.now() - d.getTime()) / DAY_MS) > 180;
+  }), [stockPallets]);
+  const mayor180Pn = mayor180Pallets.reduce((s, p) => s + (p.kilos || 0), 0);
+
+  const sinDocPallets = useMemo(() => stockPallets.filter(p => !p.codigo || p.codigoTipo === 'NINGUNO'), [stockPallets]);
+
+  // KPIs principales basados en stock de pallets
+  const kpis = useMemo(() => {
+    return [
+      { id: 'k1', label: 'Stock Total', value: stockTotalKg, unit: 'kg' as const, icon: 'Warehouse', color: 'blue' as const, drillDown: { type: 'deposito' as const } },
+      { id: 'k2', label: 'Exportaciones', value: exportaciones.reduce((s, r) => s + (r.pesoNeto || 0), 0), unit: 'kg' as const, icon: 'Ship', color: 'emerald' as const, drillDown: { type: 'pais' as const } },
+      { id: 'k3', label: 'Productores Activos', value: new Set(depositos.map(r => r.nombreEstablecimientoProd).filter(Boolean)).size, unit: 'count' as const, icon: 'Users', color: 'amber' as const },
+      { id: 'k4', label: 'COTEs en Stock', value: stockCotes.length, unit: 'count' as const, icon: 'Boxes', color: 'violet' as const },
+      { id: 'k5', label: 'Mercadería >180 días', value: mayor180Pn, unit: 'kg' as const, icon: 'Clock', color: mayor180Pn > 0 ? 'red' as const : 'emerald' as const },
+      { id: 'k6', label: 'Alertas', value: retenidaPallets.length + mayor180Pallets.length, unit: 'count' as const, icon: 'AlertTriangle', color: (retenidaPallets.length + mayor180Pallets.length) > 0 ? 'red' as const : 'emerald' as const },
+    ];
+  }, [stockTotalKg, exportaciones, depositos, stockCotes, mayor180Pn, retenidaPallets, mayor180Pallets]);
+
+  // Insights basados en stock real
+  const insights = useMemo(() => {
+    const out: { id: string; title: string; description: string; severity: 'positive' | 'negative' | 'warning' | 'opportunity' | 'neutral'; icon: string }[] = [];
+    if (stockPallets.length === 0) {
+      out.push({ id: 'ins-empty', title: 'Sin stock cargado', description: 'Subí el Excel de pallets desde Cruces Frimaral o Trazabilidad para ver métricas reales.', severity: 'warning', icon: 'AlertTriangle' });
+      return out;
+    }
+    out.push({ id: 'ins-stock', title: `${stockCotes.length} COTEs en stock`, description: `${(stockTotalKg / 1000).toFixed(1)} t en ${stockPallets.length} pallets. ${stockTotalCajas.toLocaleString('es-UY')} cajas totales.`, severity: 'neutral', icon: 'Warehouse' });
+    if (retenidaPallets.length > 0) {
+      out.push({ id: 'ins-retenida', title: `${retenidaPallets.length} pallets retenidos`, description: `${(retenidaPn / 1000).toFixed(1)} t retenidos. Requiere atención inmediata.`, severity: 'negative', icon: 'AlertTriangle' });
+    }
+    if (mayor180Pallets.length > 0) {
+      out.push({ id: 'ins-180', title: `${mayor180Pallets.length} pallets >180 días`, description: `${(mayor180Pn / 1000).toFixed(1)} t sin movimiento por más de 180 días. Stock inmovilizado.`, severity: 'warning', icon: 'Clock' });
+    }
+    if (sinDocPallets.length > 0) {
+      out.push({ id: 'ins-sindoc', title: `${sinDocPallets.length} pallets sin COTE`, description: 'Pallets sin código COTE o Pase Sanitario identificado.', severity: 'warning', icon: 'FileText' });
+    }
+    const expPn = exportaciones.reduce((s, r) => s + (r.pesoNeto || 0), 0);
+    if (expPn > 0) {
+      out.push({ id: 'ins-exp', title: `Exportaciones: ${(expPn / 1000).toFixed(1)} t`, description: `${exportaciones.length} registros de exportación con CALIRAL como certificador o depósito.`, severity: 'positive', icon: 'Ship' });
+    }
+    return out;
+  }, [stockPallets, stockCotes, stockTotalKg, stockTotalCajas, retenidaPallets, retenidaPn, mayor180Pallets, mayor180Pn, sinDocPallets, exportaciones]);
+
+  // Alertas basadas en pallets (formato compatible con AlertWidget)
+  const alerts = useMemo(() => {
+    const out: any[] = [];
+    for (const p of retenidaPallets.slice(0, 5)) {
+      out.push({ id: `ret-${p.id}`, category: 'mercaderia_retenida', priority: 'critica', title: `Retenido: ${p.codigo || 'sin COTE'}`, description: `${p.contenido?.substring(0, 60)} • ${(p.kilos / 1000).toFixed(1)} t`, entity: { type: 'cote', id: p.codigo || p.id, label: p.codigo || 'sin COTE' }, detectedAt: new Date().toISOString() });
+    }
+    for (const p of mayor180Pallets.slice(0, 5)) {
+      out.push({ id: `180-${p.id}`, category: 'stock_inmovilizado', priority: 'alta', title: `Inmovilizado: ${p.codigo || 'sin COTE'}`, description: `${p.contenido?.substring(0, 60)} • ${(p.kilos / 1000).toFixed(1)} t`, entity: { type: 'cote', id: p.codigo || p.id, label: p.codigo || 'sin COTE' }, detectedAt: new Date().toISOString() });
+    }
+    return out;
+  }, [retenidaPallets, mayor180Pallets]);
+
+  // Timeline de actividad
+  const activity = useMemo(() => {
+    return [...depositos, ...exportaciones]
+      .map(r => {
+        const rec = r as unknown as Record<string, string | number | null | undefined>;
+        return {
+          id: String(r.id || Math.random()),
+          type: rec.tipo === 'EXPORTACION' ? 'exportacion' as const : 'ingreso' as const,
+          description: `${rec.nombreEstablecimientoCertif || '—'} → ${rec.nombreEstablecimientoDestino || r.paisDestino || '—'}`,
+          timestamp: r.fechaTramite || new Date().toISOString(),
+          entity: r.nroCote ? { type: 'cote' as const, id: r.nroCote, label: r.nroCote } : undefined,
+          meta: { pn: r.pesoNeto || 0 },
+        };
+      })
+      .filter(m => m.timestamp)
+      .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
+      .slice(0, 30);
+  }, [depositos, exportaciones]);
 
   // Rankings
   const rankingEmpresas: RankingItem[] = useMemo(() => {
-    return getStockByEmpresa(stock).map(e => ({
-      id: e.empresa, label: e.empresa, value: e.pn, subtitle: `${e.count} COTEs`,
-    }));
-  }, [stock]);
+    const map = new Map<string, number>();
+    for (const p of stockPallets) {
+      const dep = p.contenido?.split(' - ')[0]?.substring(0, 40) || 'Sin producto';
+      map.set(dep, (map.get(dep) || 0) + (p.kilos || 0));
+    }
+    return Array.from(map.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10)
+      .map(([label, value]) => ({ id: label, label, value, subtitle: `${(value / 1000).toFixed(1)} t` }));
+  }, [stockPallets]);
 
   const rankingInmovilizado: RankingItem[] = useMemo(() => {
-    return getStockInmovilizadoByDeposito(stock).map(d => ({
-      id: d.deposito, label: d.deposito, value: d.pn, subtitle: `${d.count} COTEs`,
-    }));
-  }, [stock]);
+    const map = new Map<string, { pn: number; count: number }>();
+    for (const p of mayor180Pallets) {
+      const dep = p.codigo || 'Sin COTE';
+      if (!map.has(dep)) map.set(dep, { pn: 0, count: 0 });
+      const e = map.get(dep)!;
+      e.pn += p.kilos || 0;
+      e.count++;
+    }
+    return Array.from(map.entries())
+      .sort((a, b) => b[1].pn - a[1].pn)
+      .slice(0, 8)
+      .map(([label, v]) => ({ id: label, label, value: v.pn, subtitle: `${v.count} pallets` }));
+  }, [mayor180Pallets]);
 
-  // Trend: serie mensual de ingresos (placeholder simple basado en fechas)
+  // Trend: serie mensual de ingresos
   const trendData: TrendPoint[] = useMemo(() => {
     const months: Record<string, number> = {};
     for (const r of depositos) {
@@ -127,21 +243,21 @@ export function CentroInteligencia() {
         priority: 'critica', action: 'Abrir Centro de Alertas', icon: 'ShieldAlert',
       });
     }
-    const inmov = stock.filter(s => s.diasSinMovimiento > 90);
+    const inmov = mayor180Pallets;
     if (inmov.length > 0) {
       recs.push({
         id: 'rec-inmov',
         title: 'Auditar stock inmovilizado',
-        description: `${inmov.length} COTEs sin movimiento por más de 90 días. Liberar o reasignar.`,
+        description: `${inmov.length} pallets sin movimiento por más de 180 días. Liberar o reasignar.`,
         priority: 'alta', action: 'Ver ranking de inmovilizado', icon: 'ClipboardCheck',
       });
     }
-    const inactivos = productores.filter(p => !p.activo);
-    if (inactivos.length > 0) {
+    const productoresActivos = new Set(depositos.map(r => r.nombreEstablecimientoProd).filter(Boolean));
+    if (productoresActivos.size > 0 && productoresActivos.size < 5) {
       recs.push({
         id: 'rec-prod',
-        title: 'Reactivar productores inactivos',
-        description: `${inactivos.length} productores sin actividad en 90 días. Contactar comercial.`,
+        title: 'Diversificar productores',
+        description: `Solo ${productoresActivos.size} productor(es) activo(s). Considerar captar más.`,
         priority: 'media', action: 'Ver productores', icon: 'Target',
       });
     }
@@ -152,7 +268,7 @@ export function CentroInteligencia() {
       priority: 'baja', action: 'Abrir Mercado Nacional', icon: 'Lightbulb',
     });
     return recs;
-  }, [alerts, stock, productores]);
+  }, [alerts, mayor180Pallets, depositos]);
 
   // Quick actions
   const quickActions: QuickAction[] = [
@@ -283,7 +399,9 @@ export function CentroInteligencia() {
               <p className="text-xs text-slate-700 dark:text-slate-200">
                 <span className="font-semibold">Estado actual:</span>{' '}
                 {depositos.length} ingresos • {exportaciones.length} exportaciones •{' '}
-                {productores.length} productores • {alerts.length} alertas activas •{' '}
+                {stockPallets.length > 0
+                  ? `${stockCotes.length} COTEs en stock • ${stockPallets.length} pallets • ${alerts.length} alerta(s)`
+                  : 'Sin stock cargado. Subí el Excel de pallets en Cruces Frimaral.'}
                 <span className="text-violet-700 dark:text-violet-300 font-medium">
                   {alerts.filter(a => a.priority === 'critica').length} críticas
                 </span>
@@ -297,7 +415,7 @@ export function CentroInteligencia() {
                   <KPIWidget
                     key={kpi.id}
                     kpi={kpi}
-                    onClick={kpi.drillDown ? () => openDrawer(kpi.drillDown!.type, kpi.drillDown!.id || '') : undefined}
+                    onClick={kpi.drillDown ? () => openDrawer(kpi.drillDown!.type, '') : undefined}
                   />
                 ))}
               </div>
