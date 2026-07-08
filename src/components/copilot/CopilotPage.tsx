@@ -456,13 +456,14 @@ function buildAnalysis(qType: QuestionType, data: { depositos: any[]; exportacio
       const result = computeCapturaCaliral(data.nacional, NIREA.aliases);
       const insights = generateCapturaInsights(result, NIREA.name);
       return {
-        rawAnswer: `${NIREA.name} exportó ${fmtT(result.totalClientePn)} en total. CALIRAL gestionó ${fmtT(result.caliralPn)} (${result.captureIndex.toFixed(1)}%). Resto vía terceros: ${fmtT(result.otrosPn)}.`,
+        rawAnswer: `${NIREA.name} exportó ${fmtT(result.totalClientePn)} en total. CALIRAL capturó como depósito ${fmtT(result.caliralPn)} (${result.captureIndex.toFixed(1)}%). Resto vía terceros: ${fmtT(result.otrosPn)}. Adicionalmente, CALIRAL certificó ${fmtT(result.caliralCfPn)} de lo depositado.`,
         blocks: [
           {
             type: 'kpi',
             title: 'Índice de Captura CALIRAL',
             items: [
-              { label: 'Captura total', value: result.captureIndex.toFixed(1) + '%', detail: `${fmtT(result.caliralPn)} de ${fmtT(result.totalClientePn)}`, severity: result.captureIndex > 50 ? 'positive' as const : result.captureIndex > 25 ? 'warning' as const : 'negative' as const },
+              { label: 'Captura (depósito)', value: result.captureIndex.toFixed(1) + '%', detail: `${fmtT(result.caliralPn)} de ${fmtT(result.totalClientePn)}`, severity: result.captureIndex > 50 ? 'positive' as const : result.captureIndex > 25 ? 'warning' as const : 'negative' as const },
+              { label: 'Certificación (de lo depositado)', value: result.caliralCfPn > 0 ? fmtT(result.caliralCfPn) : '—', detail: `${result.caliralCfCount} registros`, severity: 'neutral' as const },
               { label: 'Vía terceros', value: (100 - result.captureIndex).toFixed(1) + '%', detail: `${fmtT(result.otrosPn)}`, severity: 'neutral' as const },
             ],
           },

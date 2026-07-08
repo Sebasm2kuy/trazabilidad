@@ -21,7 +21,7 @@ export const CLIENTES_ESTRATEGICOS = [
 export interface CapturaResult {
   /** Total exportado por el cliente (kg). */
   totalClientePn: number;
-  /** Total exportado a través de CALIRAL (kg) — certificación OR depósito. */
+  /** Total exportado a través de CALIRAL como depósito (kg). */
   caliralPn: number;
   /** Total exportado a través de otros certificadores (kg). */
   otrosPn: number;
