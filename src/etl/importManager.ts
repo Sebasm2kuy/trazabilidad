@@ -291,6 +291,17 @@ export const ImportManager: IImportManager = {
         pallets: domainData.pallets,
       };
       localStorage.setItem('trazabilidad_stock_data', JSON.stringify(stockLoad));
+      // Sincronizar con Firebase
+      try {
+        const FB_URL = 'https://trazabilidad-9aa3c-default-rtdb.firebaseio.com';
+        await fetch(`${FB_URL}/trazabilidad_stock_data.json`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(stockLoad),
+        });
+      } catch (e) {
+        console.error('[ImportManager] Error sync pallets a Firebase:', e);
+      }
     }
 
     if (tipo === 'ingresos') {
@@ -309,6 +320,17 @@ export const ImportManager: IImportManager = {
         tipo: 'deposito',
       }));
       localStorage.setItem('trazabilidad_dep_imported', JSON.stringify(shipments));
+      // Sincronizar con Firebase
+      try {
+        const FB_URL = 'https://trazabilidad-9aa3c-default-rtdb.firebaseio.com';
+        await fetch(`${FB_URL}/trazabilidad_dep_imported.json`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(shipments),
+        });
+      } catch (e) {
+        console.error('[ImportManager] Error sync ingresos a Firebase:', e);
+      }
     }
 
     if (tipo === 'exportaciones') {
@@ -329,6 +351,17 @@ export const ImportManager: IImportManager = {
         tipo: 'exportacion',
       }));
       localStorage.setItem('trazabilidad_exp_imported', JSON.stringify(exports));
+      // Sincronizar con Firebase
+      try {
+        const FB_URL = 'https://trazabilidad-9aa3c-default-rtdb.firebaseio.com';
+        await fetch(`${FB_URL}/trazabilidad_exp_imported.json`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(exports),
+        });
+      } catch (e) {
+        console.error('[ImportManager] Error sync exportaciones a Firebase:', e);
+      }
     }
 
     // 9. Registrar sesión
