@@ -52,11 +52,11 @@ export default function Home() {
   };
 
   return (
-    <ErrorBoundary>
+    <ErrorBoundary name="App">
       <div className="flex h-screen overflow-hidden bg-slate-50">
         <Sidebar />
         <main className="flex-1 overflow-y-auto overflow-x-hidden">
-          <ErrorBoundary>
+          <ErrorBoundary name={`tab:${activeTab}`}>
             {renderContent()}
           </ErrorBoundary>
         </main>

@@ -5,7 +5,7 @@ import { useAppStore, selectSidebarFields, useShallow } from '@/store/useAppStor
 import {
   Warehouse, Ship, ArrowLeftRight, Search, GitCompare,
   Download, PlusCircle, Settings, Cloud, CloudOff, Menu, Globe, Sparkles, Activity,
-  Radio, Home, Briefcase, Bot, Database,
+  Home, Briefcase, Bot, Database,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { isConfigured, getLastSync } from '@/lib/googleSheets';

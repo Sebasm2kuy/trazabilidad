@@ -6,12 +6,7 @@
 // NUNCA accede a React ni a Excel.
 // ============================================================
 
-import { KPIEngine } from './kpiEngine';
-import { RiskEngine } from './riskEngine';
 import { BusinessIntelligenceEngine } from './biEngine';
-import { TraceGraph } from './traceGraphEngine';
-import { ConciliationEngine } from './conciliationEngine';
-import { IntegrityEngine } from './integrityEngine';
 import type { Ingreso, Exportacion, StockPallet } from '@/domain';
 
 // --- Tipos ---

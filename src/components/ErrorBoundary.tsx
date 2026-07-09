@@ -1,10 +1,26 @@
+// ============================================================
+// ErrorBoundary — Captura errores de render en componentes hijos
+// ------------------------------------------------------------
+// REFACTOR (audit):
+//   - Migrado console.error → logger.error (logger centralizado)
+//   - Añadido prop `name` para identificar qué componente falló
+//   - Añadido prop `fallback` opcional para UI personalizada
+//   - Añadido botón "Recargar página" además de "Reintentar"
+//   - API pública 100% compatible (props opcionales)
+// ============================================================
+
 'use client';
 
 import React from 'react';
-import { AlertTriangle, ChevronDown, ChevronUp, RefreshCw } from 'lucide-react';
+import { AlertTriangle, ChevronDown, ChevronUp, RefreshCw, RotateCcw } from 'lucide-react';
+import { logger } from '@/lib/logger';
 
 interface ErrorBoundaryProps {
   children: React.ReactNode;
+  /** Nombre del componente envuelto, para logging. */
+  name?: string;
+  /** Fallback personalizado. Si no se provee, usa el UI por defecto. */
+  fallback?: React.ComponentType<{ error: Error; retry: () => void }>;
 }
 
 interface ErrorBoundaryState {
@@ -31,7 +47,8 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
     this.setState({ errorInfo });
-    console.error('ErrorBoundary caught an error:', error, errorInfo);
+    const tag = this.props.name ? `[error-boundary:${this.props.name}]` : '[error-boundary]';
+    logger.error(tag, error, errorInfo);
   }
 
   handleRetry = () => {
@@ -43,12 +60,22 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
     });
   };
 
+  handleReload = () => {
+    if (typeof window !== 'undefined') window.location.reload();
+  };
+
   toggleDetails = () => {
     this.setState((prev) => ({ showDetails: !prev.showDetails }));
   };
 
   render() {
     if (this.state.hasError) {
+      // Fallback personalizado
+      if (this.props.fallback && this.state.error) {
+        const Fallback = this.props.fallback;
+        return <Fallback error={this.state.error} retry={this.handleRetry} />;
+      }
+
       const errorMessage =
         this.state.error?.message || 'Ha ocurrido un error inesperado';
       const componentStack =
@@ -65,7 +92,9 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
                   Algo salió mal
                 </h2>
                 <p className="text-slate-400 text-xs mt-0.5">
-                  Se produjo un error en la aplicación
+                  {this.props.name
+                    ? `Error en ${this.props.name}`
+                    : 'Se produjo un error en la aplicación'}
                 </p>
               </div>
             </div>
@@ -77,13 +106,22 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
                 administrador si el problema persiste.
               </p>
 
-              <button
-                onClick={this.handleRetry}
-                className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white text-sm font-medium rounded-lg hover:bg-emerald-700 transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2"
-              >
-                <RefreshCw className="h-4 w-4" />
-                Reintentar
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={this.handleRetry}
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white text-sm font-medium rounded-lg hover:bg-emerald-700 transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2"
+                >
+                  <RefreshCw className="h-4 w-4" />
+                  Reintentar
+                </button>
+                <button
+                  onClick={this.handleReload}
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 text-sm font-medium rounded-lg hover:bg-slate-200 transition-colors"
+                >
+                  <RotateCcw className="h-4 w-4" />
+                  Recargar página
+                </button>
+              </div>
 
               {/* Collapsible error details */}
               <div className="border border-slate-200 rounded-lg overflow-hidden">

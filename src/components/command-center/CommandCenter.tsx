@@ -9,7 +9,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import {
-  Activity, AlertTriangle, Brain, GitBranch, TrendingUp, Target,
+  Activity, AlertTriangle, GitBranch, TrendingUp, Target,
   Shield, Network, FlaskConical, Boxes, Ship, Users, Warehouse,
   Gauge, Zap, ArrowRight, RefreshCw, Sparkles,
 } from 'lucide-react';
@@ -18,7 +18,7 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
-  KPIWidget, InsightCard, AlertWidget, AlertList,
+  KPIWidget, InsightCard,
   TimelineWidget, RankingWidget, TrendWidget, QuickActionWidget,
   WidgetShell,
 } from '@/widgets';

@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import {
   Settings, Cloud, CloudOff, RefreshCw, CheckCircle2, XCircle,
-  Loader2, ExternalLink, Save, ShieldAlert, Trash2, Key, Lock, Eye, EyeOff, AlertTriangle, Database
+  Loader2, Save, ShieldAlert, Trash2, Key, Lock, Eye, EyeOff, AlertTriangle, Database
 } from 'lucide-react';
 import { toast } from 'sonner';
 import * as gs from '@/lib/googleSheets';

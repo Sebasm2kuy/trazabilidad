@@ -1790,6 +1790,21 @@ export default function MercadoNacional() {
     return { kpis, companyGrowth: companyGrowth.slice(0, 10), countryGrowth: countryGrowth.slice(0, 10) };
   }, [period1Records, period2Records]);
 
+  // Listas derivadas memoizadas (antes se calculaban en cada render)
+  const growthLists = useMemo(() => {
+    const companiesGrowing = periodComparison.companyGrowth.filter(c => c.diff > 0).slice(0, 8);
+    const companiesDeclining = [...periodComparison.companyGrowth]
+      .filter(c => c.diff < 0)
+      .sort((a, b) => a.diffPct - b.diffPct)
+      .slice(0, 8);
+    const countriesGrowing = periodComparison.countryGrowth.filter(c => c.diff > 0).slice(0, 8);
+    const countriesDeclining = [...periodComparison.countryGrowth]
+      .filter(c => c.diff < 0)
+      .sort((a, b) => a.diffPct - b.diffPct)
+      .slice(0, 8);
+    return { companiesGrowing, companiesDeclining, countriesGrowing, countriesDeclining };
+  }, [periodComparison]);
+
   // ============================================================
   // TABS DEFINITION
   // ============================================================
@@ -2973,7 +2988,7 @@ export default function MercadoNacional() {
                   <CardContent className="p-4">
                     <h3 className="text-sm font-bold text-emerald-700 mb-3">📈 Empresas que más crecieron</h3>
                     <div className="space-y-1">
-                      {periodComparison.companyGrowth.filter(c => c.diff > 0).slice(0, 8).map((c, i) => (
+                      {growthLists.companiesGrowing.map((c, i) => (
                         <div key={i} className="flex items-center gap-2 text-xs">
                           <span className="w-32 truncate text-slate-700" title={c.name}>{c.name}</span>
                           <span className="text-blue-500 font-mono w-16 text-right">{(c.p1 / 1000).toFixed(0)}t</span>
@@ -2989,7 +3004,7 @@ export default function MercadoNacional() {
                   <CardContent className="p-4">
                     <h3 className="text-sm font-bold text-red-700 mb-3">📉 Empresas que más cayeron</h3>
                     <div className="space-y-1">
-                      {[...periodComparison.companyGrowth].filter(c => c.diff < 0).sort((a, b) => a.diffPct - b.diffPct).slice(0, 8).map((c, i) => (
+                      {growthLists.companiesDeclining.map((c, i) => (
                         <div key={i} className="flex items-center gap-2 text-xs">
                           <span className="w-32 truncate text-slate-700" title={c.name}>{c.name}</span>
                           <span className="text-blue-500 font-mono w-16 text-right">{(c.p1 / 1000).toFixed(0)}t</span>
@@ -3009,7 +3024,7 @@ export default function MercadoNacional() {
                   <CardContent className="p-4">
                     <h3 className="text-sm font-bold text-emerald-700 mb-3">🌎 Países que más crecieron</h3>
                     <div className="space-y-1">
-                      {periodComparison.countryGrowth.filter(c => c.diff > 0).slice(0, 8).map((c, i) => (
+                      {growthLists.countriesGrowing.map((c, i) => (
                         <div key={i} className="flex items-center gap-2 text-xs">
                           <span className="w-32 truncate text-slate-700" title={c.name}>{c.name}</span>
                           <span className="text-blue-500 font-mono w-16 text-right">{(c.p1 / 1000).toFixed(0)}t</span>
@@ -3025,7 +3040,7 @@ export default function MercadoNacional() {
                   <CardContent className="p-4">
                     <h3 className="text-sm font-bold text-red-700 mb-3">🌎 Países que más cayeron</h3>
                     <div className="space-y-1">
-                      {[...periodComparison.countryGrowth].filter(c => c.diff < 0).sort((a, b) => a.diffPct - b.diffPct).slice(0, 8).map((c, i) => (
+                      {growthLists.countriesDeclining.map((c, i) => (
                         <div key={i} className="flex items-center gap-2 text-xs">
                           <span className="w-32 truncate text-slate-700" title={c.name}>{c.name}</span>
                           <span className="text-blue-500 font-mono w-16 text-right">{(c.p1 / 1000).toFixed(0)}t</span>
