@@ -15,6 +15,7 @@ import ImportExportPanel from '@/components/import-export/ImportExportPanel';
 import NewRecordForm from '@/components/new-record/NewRecordForm';
 import AIAssistant from '@/components/AIAssistant';
 import { CentroInteligencia } from '@/components/centro/CentroInteligencia';
+import { CentroDeDatos } from '@/components/centro-datos/CentroDeDatos';
 import { OperacionCaliral } from '@/components/operacion-caliral/OperacionCaliral';
 import { ClientesEstrategicos } from '@/components/clientes-estrategicos/ClientesEstrategicos';
 import { CopilotPage } from '@/components/copilot/CopilotPage';
@@ -34,6 +35,7 @@ export default function Home() {
       case 'operacion': return <OperacionCaliral />;
       case 'copilot': return <CopilotPage />;
       case 'centro': return <CentroInteligencia />;
+      case 'centro-datos': return <CentroDeDatos />;
       case 'nirea': return <ClientesEstrategicos />;
       case 'depositos': return <ShipmentTable />;
       case 'exportaciones': return <ExportacionesTable />;

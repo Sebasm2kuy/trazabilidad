@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-export type Tab = 'operacion' | 'copilot' | 'nirea' | 'centro' | 'depositos' | 'exportaciones' | 'cruce-caliral' | 'cruces-x-cote' | 'mercado-nacional' | 'hallazgos' | 'trazabilidad-explorer' | 'trazabilidad' | 'importar' | 'nuevo';
+export type Tab = 'operacion' | 'copilot' | 'nirea' | 'centro' | 'centro-datos' | 'depositos' | 'exportaciones' | 'cruce-caliral' | 'cruces-x-cote' | 'mercado-nacional' | 'hallazgos' | 'trazabilidad-explorer' | 'trazabilidad' | 'importar' | 'nuevo';
 
 interface Filters {
   pais: string;

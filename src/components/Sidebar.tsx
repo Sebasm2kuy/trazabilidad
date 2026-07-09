@@ -5,7 +5,7 @@ import { useAppStore } from '@/store/useAppStore';
 import {
   Warehouse, Ship, ArrowLeftRight, Search, GitCompare,
   Download, PlusCircle, Settings, Cloud, CloudOff, Menu, Globe, Sparkles, Activity,
-  Radio, Home, Briefcase, Bot,
+  Radio, Home, Briefcase, Bot, Database,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { isConfigured, getLastSync } from '@/lib/googleSheets';
@@ -14,7 +14,7 @@ import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { useIsMobile } from '@/hooks/use-mobile';
 
 type TabId =
-  | 'operacion' | 'copilot' | 'nirea' | 'centro'
+  | 'operacion' | 'copilot' | 'nirea' | 'centro' | 'centro-datos'
   | 'depositos' | 'exportaciones' | 'cruce-caliral' | 'cruces-x-cote'
   | 'mercado-nacional' | 'hallazgos' | 'trazabilidad-explorer' | 'trazabilidad'
   | 'importar' | 'nuevo';
@@ -56,6 +56,7 @@ const NAV_SECTIONS: NavSection[] = [
   {
     title: 'Sistema',
     items: [
+      { id: 'centro-datos', label: 'Centro de Datos', icon: Database },
       { id: 'depositos', label: 'A Depósitos', icon: Warehouse },
       { id: 'exportaciones', label: 'Exportaciones', icon: Ship },
       { id: 'cruce-caliral', label: 'Cruces Frimaral', icon: ArrowLeftRight },
