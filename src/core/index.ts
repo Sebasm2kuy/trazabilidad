@@ -1,8 +1,6 @@
 // ============================================================
-// CORE — Inicialización de la aplicación + Platform Core
+// CORE — Inicialización + Platform Core + Enterprise Blueprint
 // ============================================================
-// App.tsx, Providers, Router, Theme, Contextos globales.
-// PlatformCore: seguridad, auth, RBAC, config, audit, health.
 
 export { PlatformCore } from './platformCore';
 export type {
@@ -12,3 +10,6 @@ export type {
   Notification, SoftDelete, VersionInfo, UserPreferences,
 } from './platformCore';
 export { DEFAULT_ROLES } from './platformCore';
+
+export { PRINCIPLES, ARCHITECTURE_FLOW, DEV_RULES, TEST_STRATEGY, ROADMAP, FINAL_CHECKLIST, PROHIBITIONS, AI_READINESS, MIGRATION_READY, BLUEPRINT_VERSION, BLUEPRINT_DATE, BLUEPRINT_DOCUMENTS, isDone } from './enterpriseBlueprint';
+export type { AcceptanceCriteria, TestSpec, TestLevel, RoadmapItem, RoadmapPhase, ProjectChecklist } from './enterpriseBlueprint';
