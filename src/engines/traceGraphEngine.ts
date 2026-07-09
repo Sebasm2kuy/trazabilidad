@@ -451,6 +451,11 @@ class TraceGraphEngineImpl implements ITraceGraphEngine {
 
   // --- Estadísticas ---
 
+  /** Devuelve una referencia inmutable a todos los nodos del TraceGraph. */
+  getAllNodes(): TraceNode[] {
+    return Array.from(this.nodes.values());
+  }
+
   getStats(): {
     total: number;
     porEstado: Record<TraceEstado, number>;

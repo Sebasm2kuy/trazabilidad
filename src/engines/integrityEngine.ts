@@ -3,13 +3,25 @@
 // ------------------------------------------------------------
 // ETI-05: Valida que el TraceGraph sea coherente.
 // NUNCA modifica datos. NUNCA corrige. Solo detecta.
+//
+// REFACTOR (Staff Engineer):
+//   - Motor reducido a orquestador delgado.
+//   - Toda la lógica de validación vive en reglas (rules/).
+//   - Rule Registry: el motor no conoce reglas específicas.
+//   - Cada regla devuelve RuleFinding (código, severidad,
+//     explicación, datos), nunca texto final.
+//   - El motor materializa RuleFinding → AlertaIntegridad
+//     vía templates centralizadas (MESSAGE_TEMPLATES).
+//   - Cero `any`. API pública 100% compatible.
 // ============================================================
 
 import type {
-  TraceNode, TraceAlerta, Alerta, RiesgoNivel,
+  TraceNode, Alerta, Cote, Ingreso, Exportacion, StockPallet,
 } from '@/domain';
 import type { IntegrityEngine as IIntegrityEngine } from './interfaces';
 import { TraceGraph } from './traceGraphEngine';
+import { createDefaultRegistry, RuleRegistry } from './integrity';
+import type { RuleFinding, RuleContext } from './integrity';
 
 // --- Configuración de reglas ---
 
@@ -111,12 +123,171 @@ export interface ResultadoIntegridad {
   log: LogEjecucion;
 }
 
+// ------------------------------------------------------------
+// MESSAGE_TEMPLATES — materialización RuleFinding → AlertaIntegridad
+// ------------------------------------------------------------
+// El motor es el único lugar que conoce los textos finales.
+// Las reglas son puramente estructurales. Esto permite cambiar
+// el wording sin tocar la lógica de detección.
+// ------------------------------------------------------------
+
+interface MessageTemplate {
+  mensaje: string;
+  causa: string;
+  impacto: string;
+  recomendacion: string;
+}
+
+function fmt(template: string, data: Record<string, string | number | boolean | null>): string {
+  return template.replace(/\{(\w+)\}/g, (_, k: string) => {
+    const v = data[k];
+    return v === null || v === undefined ? '' : String(v);
+  });
+}
+
+const MESSAGE_TEMPLATES: Record<string, MessageTemplate> = {
+  // --- Grupo A: Estructural ---
+  sin_cote: {
+    mensaje: 'COTE vacío',
+    causa: 'Falta el número de COTE',
+    impacto: 'No se puede identificar el embarque',
+    recomendacion: 'Verificar el documento origen',
+  },
+  sin_productor: {
+    mensaje: 'Productor vacío',
+    causa: 'Falta el nombre del productor',
+    impacto: 'No se puede atribuir el origen',
+    recomendacion: 'Verificar el campo productor',
+  },
+  sin_certificadora: {
+    mensaje: 'Certificadora vacía',
+    causa: 'Falta la certificadora',
+    impacto: 'No se puede atribuir la certificación',
+    recomendacion: 'Verificar el campo certificadora',
+  },
+  sin_deposito: {
+    mensaje: 'Depósito vacío',
+    causa: 'Falta el depósito de ingreso',
+    impacto: 'No se sabe dónde está la mercadería',
+    recomendacion: 'Verificar el campo depósito',
+  },
+  sin_fecha_ingreso: {
+    mensaje: 'Fecha de ingreso vacía',
+    causa: 'Falta la fecha de ingreso',
+    impacto: 'No se puede verificar cronología',
+    recomendacion: 'Verificar la fecha',
+  },
+  sin_peso: {
+    mensaje: 'Peso neto cero',
+    causa: 'El peso neto del ingreso es cero',
+    impacto: 'No se puede calcular stock',
+    recomendacion: 'Verificar el peso',
+  },
+  sin_cajas: {
+    mensaje: 'Cajas cero',
+    causa: 'La cantidad de cajas del ingreso es cero',
+    impacto: 'No se puede conciliar',
+    recomendacion: 'Verificar las cajas',
+  },
+
+  // --- Grupo B: Documental ---
+  sin_ingreso: {
+    mensaje: 'Exportación sin ingreso',
+    causa: 'Hay exportaciones pero no hay ingreso relacionado',
+    impacto: 'No se puede verificar el origen de la mercadería',
+    recomendacion: 'Vincular un ingreso o crearlo manualmente',
+  },
+  doc_duplicado: {
+    mensaje: 'Documento duplicado',
+    causa: 'Documento(s) repetido(s): {documentos}',
+    impacto: 'Posible doble exportación',
+    recomendacion: 'Verificar y eliminar duplicados',
+  },
+
+  // --- Grupo C: Cronológico ---
+  exp_antes_ing: {
+    mensaje: 'Exportación anterior al ingreso',
+    causa: 'Exportación {documento} es anterior al ingreso',
+    impacto: 'Cronología imposible',
+    recomendacion: 'Verificar fechas',
+  },
+  fecha_futura: {
+    mensaje: 'Fecha futura',
+    causa: 'Fecha de ingreso {fecha} es futura',
+    impacto: 'Fecha imposible',
+    recomendacion: 'Corregir la fecha',
+  },
+
+  // --- Grupo D: Logístico ---
+  saldo_negativo: {
+    mensaje: 'Saldo negativo',
+    causa: 'Saldo de cajas: {saldoCajas}',
+    impacto: 'Se exportó más de lo ingresado',
+    recomendacion: 'Verificar exportaciones o agregar ingreso faltante',
+  },
+  sobreexportacion: {
+    mensaje: 'Sobreexportación',
+    causa: 'Ingreso: {ingresoCajas} cajas, Exportado: {exportadoCajas} cajas',
+    impacto: 'Se exportó más de lo ingresado',
+    recomendacion: 'Verificar exportaciones',
+  },
+
+  // --- Grupo E: Comercial ---
+  sin_cliente: {
+    mensaje: 'Cliente vacío',
+    causa: 'No hay cliente asignado',
+    impacto: 'No se puede atribuir el destino comercial',
+    recomendacion: 'Verificar el cliente',
+  },
+  sin_pais: {
+    mensaje: 'País vacío',
+    causa: 'No hay país de destino',
+    impacto: 'No se puede atribuir el destino geográfico',
+    recomendacion: 'Verificar el país',
+  },
+  pais_invalido: {
+    mensaje: 'País inválido',
+    causa: 'País declarado {paisDeclarado} no está en el catálogo',
+    impacto: 'Posible error de carga',
+    recomendacion: 'Verificar el catálogo de países',
+  },
+
+  // --- Grupo F: Matemático ---
+  peso_negativo: {
+    mensaje: 'Peso neto negativo',
+    causa: 'Peso: {pesoNeto} kg',
+    impacto: 'Valor imposible',
+    recomendacion: 'Corregir el peso',
+  },
+  cajas_negativas: {
+    mensaje: 'Cajas negativas',
+    causa: 'Cajas: {cajas}',
+    impacto: 'Valor imposible',
+    recomendacion: 'Corregir las cajas',
+  },
+  cajas_inconsistentes: {
+    mensaje: 'Cajas inconsistentes',
+    causa: 'Ingreso: {ingresoCajas}, Exportado: {exportadoCajas}',
+    impacto: 'La suma de exportaciones excede el ingreso',
+    recomendacion: 'Verificar exportaciones',
+  },
+
+  // --- Grupo G: Operativo ---
+  inmovilizado: {
+    mensaje: 'Mercadería inmovilizada',
+    causa: '{dias} días sin movimiento',
+    impacto: 'Stock inmovilizado >180 días',
+    recomendacion: 'Gestionar retorno o reasignar',
+  },
+};
+
 // --- Implementación ---
 
 class IntegrityEngineImpl implements IIntegrityEngine {
   private config: ReglaConfig = DEFAULT_CONFIG;
   private logs: LogEjecucion[] = [];
   private alertasActivas: AlertaIntegridad[] = [];
+  private registry: RuleRegistry = createDefaultRegistry();
 
   // --- Configuración ---
 
@@ -128,23 +299,29 @@ class IntegrityEngineImpl implements IIntegrityEngine {
     return this.config;
   }
 
+  // --- Rule Registry access ---
+
+  getRegistry(): RuleRegistry {
+    return this.registry;
+  }
+
+  /** Reemplaza el registry (avanzado). */
+  setRegistry(registry: RuleRegistry): void {
+    this.registry = registry;
+  }
+
   // --- API Interna ---
 
   validarTodo(): ResultadoIntegridad {
     const startTime = Date.now();
-    const stats = TraceGraph.getStats();
-    const nodes: TraceNode[] = [];
-
-    // Obtener todos los nodos via índice por COTE
-    for (const node of (TraceGraph as any).nodes.values() as IterableIterator<TraceNode>) {
-      nodes.push(node);
-    }
+    const nodes: TraceNode[] = TraceGraph.getAllNodes();
+    const now = new Date().toISOString();
 
     const alertas: AlertaIntegridad[] = [];
     let scoreSum = 0;
 
     for (const node of nodes) {
-      const nodeAlertas = this.validarNodo(node);
+      const nodeAlertas = this.validarNodo(node, now);
       alertas.push(...nodeAlertas);
       scoreSum += this.calcularScoreNodo(node, nodeAlertas);
     }
@@ -153,13 +330,16 @@ class IntegrityEngineImpl implements IIntegrityEngine {
     this.alertasActivas = alertas;
 
     // Construir resultado
-    const porSeveridad: Record<string, number> = {};
-    const porGrupo: Record<string, number> = {};
+    const porSeveridad = this.initCounter<SeveridadIntegridad>(['CRITICA', 'ALTA', 'MEDIA', 'BAJA', 'INFORMATIVA']);
+    const porGrupo = this.initCounter<GrupoIntegridad>([
+      'A_estructural', 'B_documental', 'C_cronologico', 'D_logistico',
+      'E_comercial', 'F_matematico', 'G_operativo', 'H_historico',
+    ]);
     const porTipo: Map<string, { cantidad: number; severidad: SeveridadIntegridad }> = new Map();
 
     for (const a of alertas) {
-      porSeveridad[a.severidad] = (porSeveridad[a.severidad] || 0) + 1;
-      porGrupo[a.grupo] = (porGrupo[a.grupo] || 0) + 1;
+      porSeveridad[a.severidad]++;
+      porGrupo[a.grupo]++;
       if (!porTipo.has(a.tipo)) porTipo.set(a.tipo, { cantidad: 0, severidad: a.severidad });
       porTipo.get(a.tipo)!.cantidad++;
     }
@@ -170,7 +350,7 @@ class IntegrityEngineImpl implements IIntegrityEngine {
 
     const log: LogEjecucion = {
       id: `log_${Date.now()}`,
-      fecha: new Date().toISOString(),
+      fecha: now,
       tipo: 'completa',
       nodos: nodes.length,
       alertas: alertas.length,
@@ -183,111 +363,62 @@ class IntegrityEngineImpl implements IIntegrityEngine {
     return {
       scoreGlobal,
       totalAlertas: alertas.length,
-      alertasPorSeveridad: porSeveridad as Record<SeveridadIntegridad, number>,
-      alertasPorGrupo: porGrupo as Record<GrupoIntegridad, number>,
+      alertasPorSeveridad: porSeveridad,
+      alertasPorGrupo: porGrupo,
       matrizAnomalias,
       alertas,
       log,
     };
   }
 
-  validarNodo(node: TraceNode): AlertaIntegridad[] {
-    const alertas: AlertaIntegridad[] = [];
-    const now = new Date().toISOString();
+  /**
+   * Ejecuta todas las reglas registradas sobre un nodo y materializa
+   * los hallazgos en AlertaIntegridad. No contiene lógica de detección.
+   */
+  validarNodo(node: TraceNode, nowOverride?: string): AlertaIntegridad[] {
+    const now = nowOverride ?? new Date().toISOString();
+    const ctx: RuleContext = { node, config: this.config, now };
+    const findings: RuleFinding[] = [];
 
-    // --- GRUPO A: Estructural ---
-    if (!node.nroCote) {
-      alertas.push(this.crearAlerta('A_estructural', 'CRITICA', node, 'sin_cote', 'COTE vacío', 'Falta el número de COTE', 'No se puede identificar el embarque', 'Verificar el documento origen', this.config.pesoSinCOTE, now));
-    }
-    if (!node.productor) {
-      alertas.push(this.crearAlerta('A_estructural', 'ALTA', node, 'sin_productor', 'Productor vacío', 'Falta el nombre del productor', 'No se puede atribuir el origen', 'Verificar el campo productor', this.config.pesoSinProductor, now));
-    }
-    if (!node.certificadora) {
-      alertas.push(this.crearAlerta('A_estructural', 'ALTA', node, 'sin_certificadora', 'Certificadora vacía', 'Falta la certificadora', 'No se puede atribuir la certificación', 'Verificar el campo certificadora', this.config.pesoSinCertificadora, now));
-    }
-    if (node.ingreso && !node.ingreso.deposito) {
-      alertas.push(this.crearAlerta('A_estructural', 'MEDIA', node, 'sin_deposito', 'Depósito vacío', 'Falta el depósito de ingreso', 'No se sabe dónde está la mercadería', 'Verificar el campo depósito', this.config.pesoSinDeposito, now));
-    }
-    if (node.ingreso && !node.ingreso.fecha) {
-      alertas.push(this.crearAlerta('A_estructural', 'MEDIA', node, 'sin_fecha_ingreso', 'Fecha de ingreso vacía', 'Falta la fecha de ingreso', 'No se puede verificar cronología', 'Verificar la fecha', this.config.pesoSinFecha, now));
-    }
-    if (node.ingreso && node.ingreso.pesoNeto === 0) {
-      alertas.push(this.crearAlerta('A_estructural', 'ALTA', node, 'sin_peso', 'Peso neto cero', 'El peso neto del ingreso es cero', 'No se puede calcular stock', 'Verificar el peso', this.config.pesoSinPeso, now));
-    }
-    if (node.ingreso && node.ingreso.cajas === 0) {
-      alertas.push(this.crearAlerta('A_estructural', 'MEDIA', node, 'sin_cajas', 'Cajas cero', 'La cantidad de cajas del ingreso es cero', 'No se puede conciliar', 'Verificar las cajas', this.config.pesoSinCajas, now));
+    for (const rule of this.registry.all()) {
+      const ruleFindings = rule.evaluate(ctx);
+      for (const f of ruleFindings) findings.push(f);
     }
 
-    // --- GRUPO B: Documental ---
-    if (!node.ingreso && node.exportaciones.length > 0) {
-      alertas.push(this.crearAlerta('B_documental', 'CRITICA', node, 'sin_ingreso', 'Exportación sin ingreso', 'Hay exportaciones pero no hay ingreso relacionado', 'No se puede verificar el origen de la mercadería', 'Vincular un ingreso o crearlo manualmente', this.config.pesoSinIngreso, now));
-    }
-    // Documentos duplicados en exportaciones
-    const docsExp = node.exportaciones.map(e => e.documento);
-    const docsDups = docsExp.filter((d, i) => docsExp.indexOf(d) !== i);
-    if (docsDups.length > 0) {
-      alertas.push(this.crearAlerta('B_documental', 'CRITICA', node, 'doc_duplicado', 'Documento duplicado', `Documento(s) repetido(s): ${docsDups.join(', ')}`, 'Posible doble exportación', 'Verificar y eliminar duplicados', this.config.pesoDocumentoDuplicado, now));
-    }
+    return findings.map(f => this.materialize(f, node, now));
+  }
 
-    // --- GRUPO C: Cronológico ---
-    if (node.ingreso && node.ingreso.fecha) {
-      const fechaIng = new Date(node.ingreso.fecha);
-      for (const exp of node.exportaciones) {
-        if (exp.fecha) {
-          const fechaExp = new Date(exp.fecha);
-          if (fechaExp < fechaIng) {
-            alertas.push(this.crearAlerta('C_cronologico', 'ALTA', node, 'exp_antes_ing', 'Exportación anterior al ingreso', `Exportación ${exp.documento} es anterior al ingreso`, 'Cronología imposible', 'Verificar fechas', this.config.pesoExportacionAntesIngreso, now));
-          }
-        }
-      }
-      // Fecha futura
-      const now2 = new Date();
-      if (fechaIng > now2) {
-        alertas.push(this.crearAlerta('C_cronologico', 'ALTA', node, 'fecha_futura', 'Fecha futura', `Fecha de ingreso ${node.ingreso.fecha} es futura`, 'Fecha imposible', 'Corregir la fecha', this.config.pesoFechaFutura, now));
-      }
-    }
+  /**
+   * Convierte un RuleFinding estructurado en una AlertaIntegridad con
+   * texto final. Usa MESSAGE_TEMPLATES para los mensajes.
+   */
+  private materialize(finding: RuleFinding, node: TraceNode, now: string): AlertaIntegridad {
+    const template = MESSAGE_TEMPLATES[finding.code] ?? {
+      mensaje: finding.code,
+      causa: finding.code,
+      impacto: '',
+      recomendacion: '',
+    };
+    return {
+      id: `int_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      grupo: finding.group,
+      severidad: finding.severity,
+      nodoId: node.id,
+      nroCote: node.nroCote,
+      tipo: finding.code,
+      mensaje: fmt(template.mensaje, finding.data),
+      causa: fmt(template.causa, finding.data),
+      impacto: fmt(template.impacto, finding.data),
+      recomendacion: fmt(template.recomendacion, finding.data),
+      peso: finding.weight,
+      detectadaEn: now,
+    };
+  }
 
-    // --- GRUPO D: Logístico ---
-    if (node.stock.saldoCajas < 0) {
-      alertas.push(this.crearAlerta('D_logistico', 'CRITICA', node, 'saldo_negativo', 'Saldo negativo', `Saldo de cajas: ${node.stock.saldoCajas}`, 'Se exportó más de lo ingresado', 'Verificar exportaciones o agregar ingreso faltante', this.config.pesoSaldoNegativo, now));
-    }
-    if (node.stock.exportadoCajas > node.stock.ingresoCajas && node.stock.ingresoCajas > 0) {
-      alertas.push(this.crearAlerta('D_logistico', 'CRITICA', node, 'sobreexportacion', 'Sobreexportación', `Ingreso: ${node.stock.ingresoCajas} cajas, Exportado: ${node.stock.exportadoCajas} cajas`, 'Se exportó más de lo ingresado', 'Verificar exportaciones', this.config.pesoSobreexportacion, now));
-    }
-
-    // --- GRUPO E: Comercial ---
-    if (node.exportaciones.length > 0 && !node.cliente) {
-      alertas.push(this.crearAlerta('E_comercial', 'BAJA', node, 'sin_cliente', 'Cliente vacío', 'No hay cliente asignado', 'No se puede atribuir el destino comercial', 'Verificar el cliente', this.config.pesoSinCliente, now));
-    }
-    if (node.exportaciones.length > 0 && !node.paisDestino) {
-      alertas.push(this.crearAlerta('E_comercial', 'BAJA', node, 'sin_pais', 'País vacío', 'No hay país de destino', 'No se puede atribuir el destino geográfico', 'Verificar el país', this.config.pesoSinPais, now));
-    }
-
-    // --- GRUPO F: Matemático ---
-    if (node.ingreso && node.ingreso.pesoNeto < 0) {
-      alertas.push(this.crearAlerta('F_matematico', 'CRITICA', node, 'peso_negativo', 'Peso neto negativo', `Peso: ${node.ingreso.pesoNeto} kg`, 'Valor imposible', 'Corregir el peso', this.config.pesoPesoInconsistente, now));
-    }
-    if (node.ingreso && node.ingreso.cajas < 0) {
-      alertas.push(this.crearAlerta('F_matematico', 'CRITICA', node, 'cajas_negativas', 'Cajas negativas', `Cajas: ${node.ingreso.cajas}`, 'Valor imposible', 'Corregir las cajas', this.config.pesoCajasInconsistentes, now));
-    }
-    // Verificar que la suma de cajas de exportaciones no exceda el ingreso
-    if (node.ingreso && node.ingreso.cajas > 0) {
-      const totalExpCajas = node.exportaciones.reduce((s, e) => s + e.cajas, 0);
-      if (totalExpCajas > node.ingreso.cajas + this.config.cajasTolerancia) {
-        alertas.push(this.crearAlerta('F_matematico', 'CRITICA', node, 'cajas_inconsistentes', 'Cajas inconsistentes', `Ingreso: ${node.ingreso.cajas}, Exportado: ${totalExpCajas}`, 'La suma de exportaciones excede el ingreso', 'Verificar exportaciones', this.config.pesoCajasInconsistentes, now));
-      }
-    }
-
-    // --- GRUPO G: Operativo ---
-    // Mercadería inmovilizada > 180 días
-    if (node.ingreso && node.ingreso.fecha && node.stock.saldoCajas > 0) {
-      const dias = Math.floor((Date.now() - new Date(node.ingreso.fecha).getTime()) / (1000 * 60 * 60 * 24));
-      if (dias > 180) {
-        alertas.push(this.crearAlerta('G_operativo', 'MEDIA', node, 'inmovilizado', 'Mercadería inmovilizada', `${dias} días sin movimiento`, 'Stock inmovilizado >180 días', 'Gestionar retorno o reasignar', 5, now));
-      }
-    }
-
-    return alertas;
+  private initCounter<T extends string>(keys: readonly T[]): Record<T, number> {
+    const out = {} as Record<T, number>;
+    for (const k of keys) out[k] = 0;
+    return out;
   }
 
   // --- Calcular score de un nodo ---
@@ -356,46 +487,64 @@ class IntegrityEngineImpl implements IIntegrityEngine {
 
   // --- Métodos de la interfaz (compatibilidad) ---
 
-  validate(cotes: any[], ingresos: any[], exportaciones: any[], stock: any[]): Alerta[] {
+  validate(cotes: Cote[], ingresos: Ingreso[], exportaciones: Exportacion[], stock: StockPallet[]): Alerta[] {
     const result = this.validarTodo();
     return result.alertas.map(a => ({
       id: a.id,
-      categoria: a.tipo as any,
-      prioridad: a.severidad.toLowerCase() as any,
+      categoria: this.mapCategoria(a.tipo),
+      prioridad: this.mapPrioridad(a.severidad),
       titulo: a.mensaje,
       descripcion: `${a.causa}. Impacto: ${a.impacto}. Recomendación: ${a.recomendacion}`,
       entidad: { tipo: 'cote', id: a.nodoId, label: a.nroCote },
       metrica: a.peso,
       accionSugerida: a.recomendacion,
       detectadaEn: a.detectadaEn,
-    })) as Alerta[];
+    }));
   }
 
-  detectDuplicates(cotes: any[]): Alerta[] { return []; }
-  detectMissingDocs(cotes: any[]): Alerta[] { return []; }
-  detectRetained(stock: any[]): Alerta[] { return []; }
-  detectImmovilized(stock: any[], dias: number): Alerta[] { return []; }
-
-  // --- Helper ---
-
-  private crearAlerta(
-    grupo: GrupoIntegridad,
-    severidad: SeveridadIntegridad,
-    node: TraceNode,
-    tipo: string,
-    titulo: string,
-    causa: string,
-    impacto: string,
-    recomendacion: string,
-    peso: number,
-    fecha: string,
-  ): AlertaIntegridad {
-    return {
-      id: `int_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-      grupo, severidad, nodoId: node.id, nroCote: node.nroCote,
-      tipo, mensaje: titulo, causa, impacto, recomendacion, peso, detectadaEn: fecha,
+  /** Mapea el código de hallazgo a CategoriaAlerta del dominio. */
+  private mapCategoria(tipo: string): Alerta['categoria'] {
+    const map: Record<string, Alerta['categoria']> = {
+      sin_cote: 'documentacion_incompleta',
+      sin_productor: 'documentacion_incompleta',
+      sin_certificadora: 'documentacion_incompleta',
+      sin_deposito: 'documentacion_incompleta',
+      sin_fecha_ingreso: 'documentacion_incompleta',
+      sin_peso: 'anomalia',
+      sin_cajas: 'anomalia',
+      sin_ingreso: 'documentacion_incompleta',
+      doc_duplicado: 'duplicados',
+      exp_antes_ing: 'anomalia',
+      fecha_futura: 'anomalia',
+      saldo_negativo: 'anomalia',
+      sobreexportacion: 'anomalia',
+      sin_cliente: 'mercaderia_sin_destino',
+      sin_pais: 'mercaderia_sin_destino',
+      pais_invalido: 'mercaderia_sin_destino',
+      peso_negativo: 'anomalia',
+      cajas_negativas: 'anomalia',
+      cajas_inconsistentes: 'anomalia',
+      inmovilizado: 'stock_inmovilizado',
     };
+    return map[tipo] ?? 'anomalia';
   }
+
+  /** Mapea SeveridadIntegridad → PrioridadAlerta. */
+  private mapPrioridad(severidad: SeveridadIntegridad): Alerta['prioridad'] {
+    const map: Record<SeveridadIntegridad, Alerta['prioridad']> = {
+      CRITICA: 'critica',
+      ALTA: 'alta',
+      MEDIA: 'media',
+      BAJA: 'baja',
+      INFORMATIVA: 'baja',
+    };
+    return map[severidad];
+  }
+
+  detectDuplicates(cotes: Cote[]): Alerta[] { return []; }
+  detectMissingDocs(cotes: Cote[]): Alerta[] { return []; }
+  detectRetained(stock: StockPallet[]): Alerta[] { return []; }
+  detectImmovilized(stock: StockPallet[], dias: number): Alerta[] { return []; }
 }
 
 // --- Singleton ---

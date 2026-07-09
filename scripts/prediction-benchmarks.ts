@@ -77,7 +77,7 @@ import {
   fillMonthlyGaps,
   detectOutliersIQR,
   linearRegression as newLinearRegression,
-} from '../trazabilidad/src/prediction/engine';
+} from '../src/prediction/engine';
 
 // ============================================================
 // Escenarios de benchmark
