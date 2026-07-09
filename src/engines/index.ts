@@ -5,6 +5,8 @@ export { KPIEngine } from './kpiEngine';
 export { RiskEngine } from './riskEngine';
 export { BusinessIntelligenceEngine } from './biEngine';
 export { ConciliationEngine } from './conciliationEngine';
+export { DiscoveryEngine } from './discoveryEngine';
+export { KnowledgeGraph } from './knowledgeGraph';
 export { DesignTokens, getRiskColor, getRiskLabel, getIntegrityColor, getIntegrityLabel, getEstadoColor, DASHBOARD_LAYOUTS, ComponentRegistry, PERFORMANCE_TARGETS } from './presentationEngine';
 export type { ReglaConfig, AlertaIntegridad, ResultadoIntegridad, LogEjecucion, GrupoIntegridad, SeveridadIntegridad } from './integrityEngine';
 export type { KPIMetadata, KPIGrupo, KPITipoCalculo, KPIVersion, KPIHistoricoEntry, CapturaResult } from './kpiEngine';
@@ -12,3 +14,5 @@ export type { RiskConfig, RiesgoNodo, MotivoRiesgo, RankingRiesgo, InsightRiesgo
 export type { DimensionCubo, MetricaCubo, CuboEntry, CuboResultado, Comparativo, ABCEntry, ParetoEntry, HeatmapCell, InsightEjecutivo, EscenarioWhatIf, DigitalTwinState, Tendencia } from './biEngine';
 export type { TraceFlow, TraceFlowEvento, TraceFlowEstado, Conciliacion, NivelConciliacion, ConciliacionConfig, ConciliacionStats } from './conciliationEngine';
 export type { KPICardProps, SmartTableColumn, SmartTableProps, TimelineEventProps, FilterPanelProps, BreadcrumbItem, NotificationItem, ViewState, ViewStatus, SavedFilter, DashboardLayout, ExportFormat, ExportOptions } from './presentationEngine';
+export type { Discovery, DiscoveryType, DiscoverySeverity, KnowledgeTimelineEntry } from './discoveryEngine';
+export type { EntityType, RelationType, KnowledgeNode, KnowledgeEdge, RelationAnalysis, InvestigationReport } from './knowledgeGraph';
