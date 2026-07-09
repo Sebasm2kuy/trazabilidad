@@ -196,14 +196,117 @@ export interface Movimiento {
 
 export interface TraceNode {
   id: string;
-  coteId: string;
   nroCote: string;
-  tipo: 'produccion' | 'ingreso' | 'deposito' | 'transferencia' | 'exportacion' | 'cliente';
-  fecha: string;
-  entidad: string;
-  descripcion: string;
+  estado: TraceEstado;
+  integridadScore: number;       // 0-100
+  riesgoScore: RiesgoNivel;
+  fechaCreacion: string;
+  fechaActualizacion: string;
+  observaciones: string;
+
+  // Producción
+  productor: string;
+  certificadora: string;
+  establecimiento: string;
+  especie: string;
+  producto: string;
+  corte: string;
+  cliente: string | null;
+  paisDestino: string;
+  empresa: string;
+
+  // Ingreso
+  ingreso: TraceIngreso | null;
+
+  // Exportaciones (puede haber varias)
+  exportaciones: TraceExportacion[];
+
+  // Stock
+  stock: TraceStock;
+
+  // Relaciones
+  relaciones: TraceRelacion[];
+
+  // Historial
+  historial: TraceEvento[];
+
+  // Alertas del nodo
+  alertas: TraceAlerta[];
+}
+
+export type TraceEstado =
+  | 'NUEVO'
+  | 'EN_STOCK'
+  | 'EXPORTADO_PARCIAL'
+  | 'EXPORTADO_TOTAL'
+  | 'CON_DIFERENCIAS'
+  | 'HUERFANO'
+  | 'SOBREEXPORTADO'
+  | 'INCONSISTENTE'
+  | 'BLOQUEADO'
+  | 'ARCHIVADO';
+
+export type RiesgoNivel = 'MUY_BAJO' | 'BAJO' | 'MEDIO' | 'ALTO' | 'CRITICO';
+
+export interface TraceIngreso {
+  fecha: string | null;
+  documento: string;
+  cajas: number;
   pesoNeto: number;
-  children: TraceNode[];
+  pesoBruto: number;
+  pallets: number;
+  deposito: string;
+  archivoOrigen: string;
+  filaOrigen: number;
+}
+
+export interface TraceExportacion {
+  id: string;
+  documento: string;
+  fecha: string | null;
+  cliente: string;
+  destino: string;
+  peso: number;
+  cajas: number;
+  contenedor: string | null;
+  observaciones: string;
+  archivoOrigen: string;
+  filaOrigen: number;
+}
+
+export interface TraceStock {
+  ingresoCajas: number;
+  ingresoPn: number;
+  exportadoCajas: number;
+  exportadoPn: number;
+  saldoCajas: number;
+  saldoPn: number;
+  palletsEnDeposito: number;
+  palletsPn: number;
+}
+
+export interface TraceRelacion {
+  tipo: 'productor' | 'certificadora' | 'deposito' | 'cliente' | 'pais';
+  entidadId: string;
+  entidadLabel: string;
+}
+
+export interface TraceEvento {
+  id: string;
+  timestamp: string;
+  tipo: 'creacion' | 'ingreso_agregado' | 'exportacion_agregada' | 'correccion' | 'saldo_recalculado' | 'integridad_recalculada' | 'alerta_generada' | 'estado_cambiado';
+  descripcion: string;
+  usuario: string;
+  antes?: string;
+  despues?: string;
+}
+
+export interface TraceAlerta {
+  id: string;
+  tipo: string;
+  severidad: 'info' | 'warning' | 'error';
+  mensaje: string;
+  fecha: string;
 }
 
 // --- Alertas e Indicadores ---

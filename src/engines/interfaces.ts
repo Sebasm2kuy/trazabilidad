@@ -7,12 +7,14 @@
 
 import type {
   Cote, Ingreso, Exportacion, StockPallet, Movimiento,
-  Alerta, Indicador, TraceNode, MatrizCaptura,
+  Alerta, Indicador, TraceNode, TraceEstado, RiesgoNivel,
+  MatrizCaptura, TraceIngreso, TraceExportacion,
 } from '@/domain';
 
 // --- TraceGraph Engine ---
 // Construye el grafo de trazabilidad: la línea de tiempo completa
 // de cada COTE desde producción hasta exportación.
+// ES LA ÚNICA FUENTE DE VERDAD de trazabilidad.
 
 export interface TraceGraphEngine {
   /** Construye el grafo de trazabilidad para todos los COTEs. */
@@ -21,6 +23,42 @@ export interface TraceGraphEngine {
   getTrace(nroCote: string): TraceNode[];
   /** Obtiene el siguiente evento esperado para un COTE. */
   getNextExpectedEvent(nroCote: string): string | null;
+  /** Búsqueda por productor. */
+  getByProductor(productor: string): TraceNode[];
+  /** Búsqueda por certificadora. */
+  getByCertificadora(cert: string): TraceNode[];
+  /** Búsqueda por depósito. */
+  getByDeposito(deposito: string): TraceNode[];
+  /** Búsqueda por estado. */
+  getByEstado(estado: TraceEstado): TraceNode[];
+  /** Búsqueda por nivel de riesgo. */
+  getByRiesgo(riesgo: RiesgoNivel): TraceNode[];
+  /** Búsqueda por país. */
+  getByPais(pais: string): TraceNode[];
+  /** Búsqueda por cliente. */
+  getByCliente(cliente: string): TraceNode[];
+  /** Estadísticas generales del grafo. */
+  getStats(): {
+    total: number;
+    porEstado: Record<TraceEstado, number>;
+    integridadPromedio: number;
+    alertasTotal: number;
+    stockTotalPn: number;
+    stockTotalCajas: number;
+  };
+  /** Suscribirse a cambios del grafo. */
+  subscribe(listener: (node: TraceNode, event: any) => void): () => void;
+  /** Trazabilidad inversa de un COTE. */
+  getTrazabilidadInversa(nroCote: string): {
+    ingreso: TraceIngreso | null;
+    exportaciones: TraceExportacion[];
+    pallets: StockPallet[];
+    cliente: string | null;
+    certificadora: string;
+    productor: string;
+  } | null;
+  /** Agregar stock de pallets a nodos existentes. */
+  addPallets(pallets: StockPallet[]): void;
 }
 
 // --- Integrity Engine ---
