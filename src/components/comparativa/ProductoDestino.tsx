@@ -19,7 +19,7 @@ export default function ProductoDestino() {
   const [topN, setTopN] = useState(30);
   const [tooltip, setTooltip] = useState<{ x: number; y: number; prod: string; dest: string; kg: number } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const { navigateAndFilter } = useAppStore();
+  const navigateAndFilter = useAppStore(s => s.navigateAndFilter);
 
   useEffect(() => {
     (async () => {

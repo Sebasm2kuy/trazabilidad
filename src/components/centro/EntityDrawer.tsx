@@ -22,7 +22,7 @@ import {
   Hash, Building2, Users, Warehouse, MapPin, Package as PackageIcon, Ship,
   Bot, MessageSquare, Plus,
 } from 'lucide-react';
-import { useEntityDrawer } from '@/store/useEntityDrawer';
+import { useEntityDrawer, selectDrawerState, useShallow } from '@/store/useEntityDrawer';
 import { loadDepositos, loadExportaciones } from '@/lib/dataRepository';
 import type { Shipment, ExpRecord } from '@/lib/types';
 import type { EntityType } from '@/domain/types';
@@ -60,7 +60,7 @@ function fmtNum(n?: number) {
 }
 
 export function EntityDrawer() {
-  const { open, entityType, entityId, closeDrawer } = useEntityDrawer();
+  const { open, entityType, entityId, closeDrawer } = useEntityDrawer(useShallow(selectDrawerState));
   const [relatedVersion, setRelatedVersion] = useState(0);
   const [related, setRelated] = useState<{ depositos: (Shipment | ExpRecord)[]; exportaciones: (Shipment | ExpRecord)[] } | null>(null);
 

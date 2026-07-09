@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { useAppStore } from '@/store/useAppStore';
+import { useAppStore, selectExpFiltersActions, useShallow } from '@/store/useAppStore';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -239,7 +239,7 @@ function toInputDate(d: string | null | undefined): string {
 }
 
 export default function ExportacionesTable() {
-  const { expFilters, setExpFilter, clearExpFilters } = useAppStore();
+  const { expFilters, setExpFilter, clearExpFilters } = useAppStore(useShallow(selectExpFiltersActions));
   const [data, setData] = useState<ExpRecord[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);

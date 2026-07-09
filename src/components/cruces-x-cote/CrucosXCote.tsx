@@ -196,7 +196,7 @@ async function loadDepositos(): Promise<Shipment[]> {
 }
 
 export default function CrucosXCote() {
-  const { navigateAndFilter } = useAppStore();
+  const navigateAndFilter = useAppStore(s => s.navigateAndFilter);
   const [stockData, setStockData] = useState<StockLoad | null>(null);
   const [palletAssignments, setPalletAssignments] = useState<Record<string, { codigo: string; tipo: 'COTE' | 'PASE_SANITARIO' }>>({});
   const [ingresoMap, setIngresoMap] = useState<Map<string, IngresoAgg>>(new Map());

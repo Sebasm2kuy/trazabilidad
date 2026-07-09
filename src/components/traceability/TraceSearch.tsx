@@ -52,7 +52,8 @@ export default function TraceSearch() {
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
   const [cruceData, setCruceData] = useState<{ ingreso: Shipment | null; exportacion: Shipment | null } | null>(null);
   const [cruceLoading, setCruceLoading] = useState(false);
-  const { search: storeSearch, setSearch: setStoreSearch } = useAppStore();
+  const storeSearch = useAppStore(s => s.search);
+  const setStoreSearch = useAppStore(s => s.setSearch);
 
   // Cargar COTEs recientes
   useEffect(() => {

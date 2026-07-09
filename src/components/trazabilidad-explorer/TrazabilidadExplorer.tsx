@@ -63,7 +63,7 @@ const ESTADO_COLORS: Record<string, { bg: string; text: string; label: string }>
 };
 
 export default function TrazabilidadExplorer() {
-  const { navigateAndFilter } = useAppStore();
+  const navigateAndFilter = useAppStore(s => s.navigateAndFilter);
   const [data, setData] = useState<TrazabilidadData | null>(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');

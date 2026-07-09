@@ -29,7 +29,7 @@ import { useDrag } from './hooks/useDrag';
 import { ChatWindow } from './components/ChatWindow';
 
 export default function AIAssistant() {
-  const { activeTab } = useAppStore();
+  const activeTab = useAppStore(s => s.activeTab);
   const [open, setOpen] = useState(false);
   const [minimized, setMinimized] = useState(false);
 

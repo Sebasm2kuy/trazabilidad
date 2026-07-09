@@ -23,7 +23,7 @@ import { initialPull } from '@/lib/googleSheets';
 import ErrorBoundary from '@/components/ErrorBoundary';
 
 export default function Home() {
-  const { activeTab } = useAppStore();
+  const activeTab = useAppStore(s => s.activeTab);
 
   // Firebase pull runs in background — app renders immediately with local data
   useEffect(() => {

@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { useAppStore } from '@/store/useAppStore';
+import { useAppStore, selectSearchAndFilters, useShallow } from '@/store/useAppStore';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -419,7 +419,7 @@ function MultiSelectFilter({
 }
 
 export default function ShipmentTable() {
-  const { search, setSearch, filters, setFilter, clearFilters } = useAppStore();
+  const { search, setSearch, filters, setFilter, clearFilters } = useAppStore(useShallow(selectSearchAndFilters));
   const [data, setData] = useState<Shipment[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);

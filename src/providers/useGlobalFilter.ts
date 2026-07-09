@@ -3,9 +3,14 @@
 // ============================================================
 // Un único filtro que afecta toda la aplicación.
 // Usa Zustand para compartir el estado.
+//
+// REFACTOR (Staff Engineer audit):
+//   - Añadidos selectors tipados para uso con useShallow
+//   - API pública 100% compatible
 // ============================================================
 
 import { create } from 'zustand';
+import { useShallow } from 'zustand/react/shallow';
 import type { DateRange, FilterOptions } from '@/intelligence/types';
 
 interface GlobalFilterState {
@@ -32,6 +37,35 @@ export const useGlobalFilter = create<GlobalFilterState>((set) => ({
   clearOptions: () => set({ options: DEFAULT_OPTIONS }),
   reset: () => set({ range: DEFAULT_RANGE, options: DEFAULT_OPTIONS }),
 }));
+
+// ============================================================
+// SELECTORS
+// ============================================================
+
+/** Selector: range completo. Usar con useShallow. */
+export const selectRange = (s: GlobalFilterState): DateRange => s.range;
+
+/** Selector: options completo. Usar con useShallow. */
+export const selectOptions = (s: GlobalFilterState): FilterOptions => s.options;
+
+/** Selector: range + options + setters. Usar con useShallow. */
+export const selectGlobalFilterAll = (s: GlobalFilterState): {
+  range: DateRange;
+  options: FilterOptions;
+  setRange: (range: DateRange) => void;
+  setStart: (start: string | null) => void;
+  setEnd: (end: string | null) => void;
+  setOption: (key: keyof FilterOptions, value: string) => void;
+  clearOptions: () => void;
+} => ({
+  range: s.range,
+  options: s.options,
+  setRange: s.setRange,
+  setStart: s.setStart,
+  setEnd: s.setEnd,
+  setOption: s.setOption,
+  clearOptions: s.clearOptions,
+});
 
 // Presets
 export const DATE_PRESETS = [
@@ -60,3 +94,6 @@ export const DATE_PRESETS = [
     return { start: `${y}-01-01`, end: `${y}-12-31` };
   }},
 ];
+
+// Re-export useShallow para conveniencia
+export { useShallow };

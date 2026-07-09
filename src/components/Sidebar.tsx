@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { useAppStore } from '@/store/useAppStore';
+import { useAppStore, selectSidebarFields, useShallow } from '@/store/useAppStore';
 import {
   Warehouse, Ship, ArrowLeftRight, Search, GitCompare,
   Download, PlusCircle, Settings, Cloud, CloudOff, Menu, Globe, Sparkles, Activity,
@@ -76,7 +76,7 @@ function SidebarContent({
 }: {
   onNavigate?: () => void;
 }) {
-  const { activeTab, setActiveTab, navigateAndFilter, search, setSearch } = useAppStore();
+  const { activeTab, setActiveTab, navigateAndFilter, search, setSearch } = useAppStore(useShallow(selectSidebarFields));
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [configured, setConfigured] = useState(false);
   const [lastSync, setLastSync] = useState('');

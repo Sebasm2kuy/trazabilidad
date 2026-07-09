@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import { loadDepositos, loadExportaciones } from '@/lib/dataRepository';
 import { fmt, fd } from '@/lib/utils';
-import { useAppStore, type Tab } from '@/store/useAppStore';
+import { useAppStore, selectNavActions, type Tab, useShallow } from '@/store/useAppStore';
 import type { Shipment, ExpRecord } from '@/lib/types';
 import StockPanel from './StockPanel';
 
@@ -284,7 +284,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [dataVersion, setDataVersion] = useState(0);
 
-  const { navigateAndFilter, setCruceNav } = useAppStore();
+  const { navigateAndFilter, setCruceNav } = useAppStore(useShallow(selectNavActions));
 
   // Load data (reused on mount and after Firebase pull)
   const reloadData = useCallback(async () => {

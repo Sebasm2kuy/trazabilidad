@@ -15,7 +15,7 @@ import type { ExpRecord } from '@/lib/types';
 import type { StockLoad, StockCodigoAgg, StockPallet } from '@/lib/parseStockXls';
 import { buildStockAggMap, SIN_CODIGO_KEY } from '@/lib/parseStockXls';
 import { fd, fmt } from '@/lib/utils';
-import { useAppStore } from '@/store/useAppStore';
+import { useAppStore, selectCruceCaliralFields, useShallow } from '@/store/useAppStore';
 
 // Fix dates that were corrupted by MM/DD ↔ DD/MM swap during Excel import
 // If a date is more than 2 months in the future, swap day and month
@@ -1399,7 +1399,7 @@ function StockTable({ stockAggMap, ingresoMap, cruceRows, sinCruceRows, edits, o
 export default function CruceCaliral() {
   const [loading, setLoading] = useState(true);
   const [subTab, setSubTab] = useState<'cruce' | 'sincruce' | 'pendientes' | 'stock'>('cruce');
-  const { activeTab, setActiveTab, setCruceNav, consumeCruceNav } = useAppStore();
+  const { activeTab, setActiveTab, setCruceNav, consumeCruceNav } = useAppStore(useShallow(selectCruceCaliralFields));
 
   // Stock state
   const [stockData, setStockData] = useState<StockLoad | null>(null);
