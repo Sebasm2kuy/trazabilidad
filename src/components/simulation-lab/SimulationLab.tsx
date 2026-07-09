@@ -12,6 +12,7 @@ import { useMemo, useState } from 'react';
 import {
   FlaskConical, Play, Save, Trash2, Plus, ArrowRight,
   TrendingUp, AlertTriangle, Shield, Boxes,
+  type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Card } from '@/components/ui/card';
@@ -367,7 +368,7 @@ export function SimulationLab({ snapshot }: Props) {
 }
 
 function ImpactMetric({ label, before, after, unit, icon: Icon, invertGood }: {
-  label: string; before: number; after: number; unit: string; icon: any; invertGood?: boolean;
+  label: string; before: number; after: number; unit: string; icon: LucideIcon; invertGood?: boolean;
 }) {
   const delta = after - before;
   const pctChange = before === 0 ? 0 : (delta / before) * 100;

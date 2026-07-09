@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useAppStore, selectSearchAndFilters, useShallow } from '@/store/useAppStore';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -866,10 +866,10 @@ export default function ShipmentTable() {
   }, [selected, edits]);
 
   const totalPages = Math.ceil(total / limit);
-  const hasFilters = search || Object.values(filters).some(Boolean);
-  const filteredCotes = coteSearch
+  const hasFilters = Boolean(search || Object.values(filters).some(Boolean));
+  const filteredCotes = useMemo(() => coteSearch
     ? cotes.filter(c => c.toLowerCase().includes(coteSearch.toLowerCase()))
-    : cotes;
+    : cotes, [cotes, coteSearch]);
   const editedCount = Object.keys(edits).length;
 
   const handleCoteSelect = (cote: string) => {

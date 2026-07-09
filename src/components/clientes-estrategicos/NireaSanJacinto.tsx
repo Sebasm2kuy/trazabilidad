@@ -12,6 +12,7 @@ import {
   TrendingUp, TrendingDown, Target, Globe, Package, Users,
   Calendar, Building2, Lightbulb, AlertCircle, Activity,
   FileText, Warehouse,
+  type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Card } from '@/components/ui/card';
@@ -479,7 +480,7 @@ export function NireaSanJacinto() {
 }
 
 function StatCard({ label, value, subtitle, icon: Icon, color }: {
-  label: string; value: string; subtitle: string; icon: any; color: string;
+  label: string; value: string; subtitle: string; icon: LucideIcon; color: string;
 }) {
   return (
     <Card className="p-4">

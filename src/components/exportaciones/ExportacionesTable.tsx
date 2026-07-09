@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useAppStore, selectExpFiltersActions, useShallow } from '@/store/useAppStore';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -729,8 +729,8 @@ export default function ExportacionesTable() {
   const editedCount = Object.keys(edits).length;
 
   const totalPages = Math.ceil(total / EXP_PAGE_LIMIT);
-  const hasFilters = Object.values(expFilters).some(Boolean);
-  const filteredCotes = coteSearch ? cotes.filter(c => c.toLowerCase().includes(coteSearch.toLowerCase())) : cotes;
+  const hasFilters = Boolean(Object.values(expFilters).some(Boolean));
+  const filteredCotes = useMemo(() => coteSearch ? cotes.filter(c => c.toLowerCase().includes(coteSearch.toLowerCase())) : cotes, [cotes, coteSearch]);
   const a = expCache.analytics;
 
   if (loading) return <div className="p-6 space-y-4"><h2 className="text-2xl font-bold text-slate-800">Exportaciones</h2><Skeleton className="h-96" /></div>;

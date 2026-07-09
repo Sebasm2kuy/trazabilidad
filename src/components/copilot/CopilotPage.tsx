@@ -17,6 +17,7 @@ import { useEffect, useState } from 'react';
 import {
   Bot, Sparkles, Search, TrendingUp, AlertTriangle, GitBranch,
   Target, ArrowRight, Lightbulb, Activity, FileText, Users,
+  type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Card } from '@/components/ui/card';
@@ -39,7 +40,7 @@ interface QuestionPreset {
   id: QuestionType;
   text: string;
   category: 'operacion' | 'comercial';
-  icon: any;
+  icon: LucideIcon;
 }
 
 const PRESETS: QuestionPreset[] = [

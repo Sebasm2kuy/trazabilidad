@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -295,7 +295,7 @@ export default function TraceSearch() {
   });
 
   const summary = getResultsSummary();
-  const filteredCotes = coteSearch ? allCotes.filter(c => c.toLowerCase().includes(coteSearch.toLowerCase())) : allCotes;
+  const filteredCotes = useMemo(() => coteSearch ? allCotes.filter(c => c.toLowerCase().includes(coteSearch.toLowerCase())) : allCotes, [allCotes, coteSearch]);
   const first = results.length > 0 ? results[0] : null;
 
   return (

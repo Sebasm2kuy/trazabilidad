@@ -18,6 +18,8 @@ import { Normalizer } from './normalizer';
 import { SchemaValidator, validateFile, crossValidate } from './validators';
 import { Converter } from './converters';
 import type { Cote, Ingreso, Exportacion, StockPallet } from '@/domain';
+import { IngresoSchema, ExportacionSchema, validateArray } from '@/lib/schemas';
+import { logger } from '@/lib/logger';
 
 const HISTORY_KEY = 'trazabilidad_import_history';
 const MAX_HISTORY = 100;
@@ -187,11 +189,11 @@ export const ImportManager: IImportManager = {
     report({ phase: 'parsing', current: 0, total: rows.length - dataStart, message: `Procesando ${rows.length - dataStart} filas…` });
 
     // 4. Mapear filas a registros intermedios
-    const records: any[] = [];
+    const records: unknown[] = [];
     for (let i = dataStart; i < rows.length; i++) {
       const row = rows[i];
       if (!row || !row[0]) continue;
-      let rec: any;
+      let rec: unknown;
       switch (tipo) {
         case 'nacional': rec = mapNacionalRow(row); break;
         case 'ingresos': rec = mapIngresoRow(row); break;
@@ -208,10 +210,10 @@ export const ImportManager: IImportManager = {
     report({ phase: 'validating', current: 0, total: records.length, message: `Validando ${records.length} registros…` });
     let validation;
     switch (tipo) {
-      case 'nacional': validation = SchemaValidator.validateNacional(records); break;
-      case 'ingresos': validation = SchemaValidator.validateIngresos(records); break;
-      case 'exportaciones': validation = SchemaValidator.validateExportaciones(records); break;
-      case 'pallets': validation = SchemaValidator.validatePallets(records); break;
+      case 'nacional': validation = SchemaValidator.validateNacional(records as NacionalRecord[]); break;
+      case 'ingresos': validation = SchemaValidator.validateIngresos(records as IngresoRecord[]); break;
+      case 'exportaciones': validation = SchemaValidator.validateExportaciones(records as ExportacionRecord[]); break;
+      case 'pallets': validation = SchemaValidator.validatePallets(records as PalletRecord[]); break;
     }
 
     if (!validation.valid) {
@@ -226,20 +228,26 @@ export const ImportManager: IImportManager = {
     let domainData: { cotes: Cote[]; ingresos: Ingreso[]; exportaciones: Exportacion[]; pallets: StockPallet[] } = { cotes: [], ingresos: [], exportaciones: [], pallets: [] };
     switch (tipo) {
       case 'nacional': {
-        const result = Converter.convertNacional(records);
+        const result = Converter.convertNacional(records as NacionalRecord[]);
         domainData.cotes = result.cotes;
         domainData.ingresos = result.ingresos;
         domainData.exportaciones = result.exportaciones;
         break;
       }
-      case 'ingresos':
-        domainData.ingresos = Converter.convertIngresos(records);
+      case 'ingresos': {
+        const { valid, errors } = validateArray(IngresoSchema, records, 'ingresos');
+        if (errors.length > 0) logger.warn('[import-manager] Ingresos inválidos descartados:', errors.length);
+        domainData.ingresos = Converter.convertIngresos(valid as IngresoRecord[]);
         break;
-      case 'exportaciones':
-        domainData.exportaciones = Converter.convertExportaciones(records);
+      }
+      case 'exportaciones': {
+        const { valid, errors } = validateArray(ExportacionSchema, records, 'exportaciones');
+        if (errors.length > 0) logger.warn('[import-manager] Exportaciones inválidas descartadas:', errors.length);
+        domainData.exportaciones = Converter.convertExportaciones(valid as ExportacionRecord[]);
         break;
+      }
       case 'pallets':
-        domainData.pallets = Converter.convertPallets(records);
+        domainData.pallets = Converter.convertPallets(records as PalletRecord[]);
         break;
     }
 
@@ -251,7 +259,7 @@ export const ImportManager: IImportManager = {
       try {
         const { saveNacionalToFirebase } = await import('@/lib/parseNacionalExcel');
         // Convertir a MovRecord para compatibilidad
-        const movRecords = records.map(r => ({
+        const movRecords = (records as NacionalRecord[]).map(r => ({
           t: r.tipoMovimiento.includes('EXPORT') ? 'EXPORTACION' : 'INGRESO',
           f: r.fecha,
           c: r.cote,
@@ -279,7 +287,7 @@ export const ImportManager: IImportManager = {
         const { clearNacionalCache } = await import('@/lib/nacionalLoader');
         clearNacionalCache();
       } catch (e) {
-        console.error('[ImportManager] Error guardando en Firebase:', e);
+        logger.error('[ImportManager] Error guardando en Firebase:', e);
       }
     }
 
@@ -300,13 +308,13 @@ export const ImportManager: IImportManager = {
           body: JSON.stringify(stockLoad),
         });
       } catch (e) {
-        console.error('[ImportManager] Error sync pallets a Firebase:', e);
+        logger.error('[ImportManager] Error sync pallets a Firebase:', e);
       }
     }
 
     if (tipo === 'ingresos') {
       // Guardar como dep_imported (compatible con dataRepository)
-      const shipments = records.map(r => ({
+      const shipments = (records as IngresoRecord[]).map(r => ({
         id: `dep_${r.nroTramite}`,
         nroTramite: r.nroTramite,
         fechaTramite: r.fechaTramite,
@@ -329,12 +337,12 @@ export const ImportManager: IImportManager = {
           body: JSON.stringify(shipments),
         });
       } catch (e) {
-        console.error('[ImportManager] Error sync ingresos a Firebase:', e);
+        logger.error('[ImportManager] Error sync ingresos a Firebase:', e);
       }
     }
 
     if (tipo === 'exportaciones') {
-      const exports = records.map(r => ({
+      const exports = (records as ExportacionRecord[]).map(r => ({
         id: `exp_${r.nroTramite}`,
         nroTramite: r.nroTramite,
         fechaTramite: r.fechaTramite,
@@ -360,7 +368,7 @@ export const ImportManager: IImportManager = {
           body: JSON.stringify(exports),
         });
       } catch (e) {
-        console.error('[ImportManager] Error sync exportaciones a Firebase:', e);
+        logger.error('[ImportManager] Error sync exportaciones a Firebase:', e);
       }
     }
 

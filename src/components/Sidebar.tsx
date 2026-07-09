@@ -6,6 +6,7 @@ import {
   Warehouse, Ship, ArrowLeftRight, Search, GitCompare,
   Download, PlusCircle, Settings, Cloud, CloudOff, Menu, Globe, Sparkles, Activity,
   Home, Briefcase, Bot, Database,
+  type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { isConfigured, getLastSync } from '@/lib/googleSheets';
@@ -22,7 +23,7 @@ type TabId =
 interface NavItem {
   id: TabId;
   label: string;
-  icon: any;
+  icon: LucideIcon;
 }
 
 interface NavSection {
