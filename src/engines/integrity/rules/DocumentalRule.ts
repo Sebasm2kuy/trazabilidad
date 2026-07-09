@@ -1,8 +1,10 @@
 // ============================================================
 // DocumentalRule — Grupo B: validaciones documentales
 // ------------------------------------------------------------
-// Cubre: sin_ingreso (exportaciones sin ingreso), doc_duplicado
-// (mismo documento repetido en exportaciones del mismo nodo).
+// Cubre únicamente: sin_ingreso (exportaciones sin ingreso
+// vinculado). La detección de duplicados se movió a
+// DuplicateBatchRule para respetar el principio de
+// responsabilidad única.
 // ============================================================
 
 import type { IntegrityRule, RuleContext, RuleFinding } from '../types';
@@ -23,22 +25,6 @@ export class DocumentalRule implements IntegrityRule {
         weight: config.pesoSinIngreso,
         data: {
           exportacionesCount: node.exportaciones.length,
-        },
-      });
-    }
-
-    // Documentos duplicados en exportaciones del nodo
-    const docsExp = node.exportaciones.map(e => e.documento);
-    const dups = docsExp.filter((d, i) => docsExp.indexOf(d) !== i);
-    if (dups.length > 0) {
-      findings.push({
-        code: 'doc_duplicado',
-        group: 'B_documental',
-        severity: 'CRITICA',
-        weight: config.pesoDocumentoDuplicado,
-        data: {
-          documentos: dups.join(', '),
-          cantidad: dups.length,
         },
       });
     }

@@ -279,6 +279,26 @@ const MESSAGE_TEMPLATES: Record<string, MessageTemplate> = {
     impacto: 'Stock inmovilizado >180 días',
     recomendacion: 'Gestionar retorno o reasignar',
   },
+
+  // --- Nuevos códigos (PortRule, DestinationRule) ---
+  sin_contenedor: {
+    mensaje: 'Sin contenedor',
+    causa: 'Exportación {documento} sin contenedor asignado',
+    impacto: 'No se puede rastrear logísticamente',
+    recomendacion: 'Asignar contenedor',
+  },
+  contenedor_mal_formado: {
+    mensaje: 'Contenedor mal formado',
+    causa: 'Contenedor {contenedor} no cumple ISO 6346 (4 letras + 7 dígitos)',
+    impacto: 'Posible error de carga',
+    recomendacion: 'Verificar el número de contenedor',
+  },
+  sin_destino: {
+    mensaje: 'Sin destino',
+    causa: 'Exportación {documento} sin destino declarado',
+    impacto: 'No se puede atribuir el destino geográfico',
+    recomendacion: 'Verificar el campo destino',
+  },
 };
 
 // --- Implementación ---
@@ -525,6 +545,9 @@ class IntegrityEngineImpl implements IIntegrityEngine {
       cajas_negativas: 'anomalia',
       cajas_inconsistentes: 'anomalia',
       inmovilizado: 'stock_inmovilizado',
+      sin_contenedor: 'documentacion_incompleta',
+      contenedor_mal_formado: 'anomalia',
+      sin_destino: 'mercaderia_sin_destino',
     };
     return map[tipo] ?? 'anomalia';
   }

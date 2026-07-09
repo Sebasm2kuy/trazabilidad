@@ -16,12 +16,15 @@
 import type { IntegrityRule } from './types';
 import { StructuralRule } from './rules/StructuralRule';
 import { DocumentalRule } from './rules/DocumentalRule';
+import { DuplicateBatchRule } from './rules/DuplicateBatchRule';
 import { CronologicoRule } from './rules/CronologicoRule';
 import { LogisticoRule } from './rules/LogisticoRule';
 import { ComercialRule } from './rules/ComercialRule';
 import { MatematicoRule } from './rules/MatematicoRule';
 import { OperativoRule } from './rules/OperativoRule';
 import { CountryRule } from './rules/CountryRule';
+import { PortRule } from './rules/PortRule';
+import { DestinationRule } from './rules/DestinationRule';
 
 export class RuleRegistry {
   private rules = new Map<string, IntegrityRule>();
@@ -60,11 +63,14 @@ export function createDefaultRegistry(): RuleRegistry {
   const registry = new RuleRegistry();
   registry.register(new StructuralRule());
   registry.register(new DocumentalRule());
+  registry.register(new DuplicateBatchRule());
   registry.register(new CronologicoRule());
   registry.register(new LogisticoRule());
+  registry.register(new PortRule());           // no-op hasta habilitar ENABLE_PORT_VALIDATION
   registry.register(new ComercialRule());
+  registry.register(new DestinationRule());
   registry.register(new MatematicoRule());
   registry.register(new OperativoRule());
-  registry.register(new CountryRule()); // no-op si PAISES_VALIDOS está vacío
+  registry.register(new CountryRule());        // no-op hasta configurar PAISES_VALIDOS
   return registry;
 }
