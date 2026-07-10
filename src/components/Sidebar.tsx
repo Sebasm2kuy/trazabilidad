@@ -159,6 +159,7 @@ function SidebarContent({
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
           <input
             type="text"
+            name="sidebar-quick-search"
             value={quickSearch}
             onChange={(e) => handleQuickSearch(e.target.value)}
             placeholder="Buscar COTE, trámite..."

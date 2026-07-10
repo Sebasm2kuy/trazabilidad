@@ -337,6 +337,7 @@ function MultiSelectFilter({
           <div className="p-2 border-b border-slate-100 dark:border-slate-800">
             <input
               type="text"
+              name={`search-${label.toLowerCase().replace(/\s+/g, '-')}`}
               placeholder={`Buscar ${label.toLowerCase()}...`}
               value={search}
               onChange={e => setSearch(e.target.value)}
@@ -1113,7 +1114,7 @@ export default function ShipmentTable() {
                       <td className="px-3 py-2.5 text-xs hidden md:table-cell max-w-[180px] truncate">{s.denominacionMercaderia || '-'}</td>
                       <td className="px-3 py-2.5 text-xs hidden xl:table-cell">{s.corte || '-'}</td>
                       <td className="px-1 py-1.5 text-right" onClick={e => e.stopPropagation()}>
-                        <input type="number" min="0" step="1"
+                        <input type="number" name={`envases-${s.id}`} min="0" step="1"
                           className="w-[72px] h-7 text-xs text-right font-mono bg-transparent border border-transparent hover:border-slate-300 focus:border-emerald-500 focus:bg-white rounded px-1.5 outline-none transition-colors"
                           defaultValue={s.cantidadEnvases ?? ''}
                           onBlur={e => { const v = e.target.value; if (v !== String(s.cantidadEnvases ?? '')) handleInlineEdit(s.id, 'cantidadEnvases', v); }}
@@ -1121,7 +1122,7 @@ export default function ShipmentTable() {
                         />
                       </td>
                       <td className="px-1 py-1.5 text-right" onClick={e => e.stopPropagation()}>
-                        <input type="number" min="0" step="0.01"
+                        <input type="number" name={`peso-neto-${s.id}`} min="0" step="0.01"
                           className="w-[88px] h-7 text-xs text-right font-mono bg-transparent border border-transparent hover:border-slate-300 focus:border-emerald-500 focus:bg-white rounded px-1.5 outline-none transition-colors"
                           defaultValue={s.pesoNeto ?? ''}
                           onBlur={e => { const v = e.target.value; if (v !== String(s.pesoNeto ?? '')) handleInlineEdit(s.id, 'pesoNeto', v); }}

@@ -7,7 +7,7 @@ export const metadata: Metadata = {
   title: "Trazabilidad Frimaral - Caliral S.A.",
   description: "Sistema de trazabilidad y control de envíos de carne",
   icons: {
-    icon: "https://z-cdn.chatglm.cn/z-ai/static/logo.svg",
+    icon: "/trazabilidad/logo.svg",
   },
 };
 

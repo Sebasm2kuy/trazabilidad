@@ -630,7 +630,7 @@ function SinCruceInlineRow({ row, ingresoMap, stockAggMap, edits, onSaved, onEdi
         <td className="px-3 py-2.5 text-xs">{row.exp.paisDestino}</td>
         <td className="px-3 py-2.5 text-xs hidden lg:table-cell max-w-[200px] truncate">{row.exp.denominacionMercaderia}</td>
         <td className="px-1 py-1.5 text-right" onClick={e => e.stopPropagation()}>
-          <input type="number" min="0" step="1"
+          <input type="number" name={`envases-${row.exp.id}`} min="0" step="1"
             className="w-[72px] h-7 text-xs text-right font-mono font-medium bg-transparent border border-transparent hover:border-slate-300 focus:border-amber-500 focus:bg-white rounded px-1.5 outline-none transition-colors"
             defaultValue={row.exp.cantidadEnvases || 0}
             onBlur={e => { const v = e.target.value; const nv = v !== '' ? parseInt(v) : null; if (nv !== row.exp.cantidadEnvases) { const ne: EditsStore = { ...edits }; ne.exports = { ...ne.exports, [row.exp.id]: { ...ne.exports[row.exp.id], cantidadEnvases: nv } }; onSaved(ne); } }}
@@ -638,7 +638,7 @@ function SinCruceInlineRow({ row, ingresoMap, stockAggMap, edits, onSaved, onEdi
           />
         </td>
         <td className="px-1 py-1.5 text-right hidden md:table-cell" onClick={e => e.stopPropagation()}>
-          <input type="number" min="0" step="0.01"
+          <input type="number" name={`peso-neto-${row.exp.id}`} min="0" step="0.01"
             className="w-[88px] h-7 text-xs text-right font-mono bg-transparent border border-transparent hover:border-slate-300 focus:border-amber-500 focus:bg-white rounded px-1.5 outline-none transition-colors"
             defaultValue={row.exp.pesoNeto || 0}
             onBlur={e => { const v = e.target.value; const nv = v !== '' ? parseFloat(v) : null; if (nv !== row.exp.pesoNeto) { const ne: EditsStore = { ...edits }; ne.exports = { ...ne.exports, [row.exp.id]: { ...ne.exports[row.exp.id], pesoNeto: nv } }; onSaved(ne); } }}
@@ -2700,7 +2700,7 @@ export default function CruceCaliral() {
                     <td className="px-3 py-2.5 text-xs">{r.exp.paisDestino}</td>
                     <td className="px-3 py-2.5 text-xs hidden xl:table-cell max-w-[200px] truncate">{r.exp.denominacionMercaderia}</td>
                     <td className="px-1 py-1.5 text-right" onClick={e => e.stopPropagation()}>
-                      <input type="number" min="0" step="1"
+                      <input type="number" name={`envases-exp-${r.exp.id}`} min="0" step="1"
                         className="w-[72px] h-7 text-xs text-right font-mono font-medium bg-transparent border border-transparent hover:border-slate-300 focus:border-violet-500 focus:bg-white rounded px-1.5 outline-none transition-colors"
                         defaultValue={r.envasesExp}
                         onBlur={e => handleInlineExportCajas(r.exp.id, r.exp.cantidadEnvases, e.target.value)}
@@ -2825,7 +2825,7 @@ export default function CruceCaliral() {
                     <td className="px-3 py-2.5 text-xs hidden lg:table-cell max-w-[200px] truncate">{r.producto}</td>
                     <td className="px-3 py-2.5 text-xs hidden md:table-cell max-w-[200px] truncate">{r.cortes.join(', ')}</td>
                     <td className="px-1 py-1.5 text-right" onClick={e => e.stopPropagation()}>
-                      <input type="number" min="0" step="1"
+                      <input type="number" name={`envases-${r.cote}`} min="0" step="1"
                         className="w-[72px] h-7 text-xs text-right font-mono bg-transparent border border-transparent hover:border-slate-300 focus:border-violet-500 focus:bg-white rounded px-1.5 outline-none transition-colors"
                         defaultValue={r.envases}
                         onBlur={e => handleInlineIngresoField(r.cote, 'envases', r.envases, e.target.value)}
@@ -2833,7 +2833,7 @@ export default function CruceCaliral() {
                       />
                     </td>
                     <td className="px-1 py-1.5 text-right hidden md:table-cell" onClick={e => e.stopPropagation()}>
-                      <input type="number" min="0" step="0.01"
+                      <input type="number" name={`peso-neto-${r.cote}`} min="0" step="0.01"
                         className="w-[88px] h-7 text-xs text-right font-mono bg-transparent border border-transparent hover:border-slate-300 focus:border-violet-500 focus:bg-white rounded px-1.5 outline-none transition-colors"
                         defaultValue={r.pesoNeto}
                         onBlur={e => handleInlineIngresoField(r.cote, 'pesoNeto', r.pesoNeto, e.target.value)}
