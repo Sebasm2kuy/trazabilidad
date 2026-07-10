@@ -24,11 +24,13 @@ import {
   computeCapturaCaliral, generateCapturaInsights,
   CLIENTES_ESTRATEGICOS, CALIRAL_ID,
 } from '@/intelligence-engine/capturaCaliral';
+import { generateCommercialIntelligence } from '@/intelligence-engine/commercialIntelligence';
+import { CommercialIntelligencePanel } from './CommercialIntelligencePanel';
 
 const NIREA_ALIASES = CLIENTES_ESTRATEGICOS.find(c => c.id === 'NIREA')!.aliases;
 const NIREA_NAME = CLIENTES_ESTRATEGICOS.find(c => c.id === 'NIREA')!.name;
 
-type View = 'resumen' | 'paises' | 'cortes' | 'mes' | 'certificadores';
+type View = 'resumen' | 'paises' | 'cortes' | 'mes' | 'certificadores' | 'inteligencia';
 
 // Presets de período (rangos de fechas comunes para análisis)
 interface PeriodPreset {
@@ -104,6 +106,10 @@ export function NireaSanJacinto() {
 
   const result = useMemo(() => computeCapturaCaliral(filteredRecords, NIREA_ALIASES), [filteredRecords]);
   const insights = useMemo(() => generateCapturaInsights(result, NIREA_NAME), [result]);
+  const intelligence = useMemo(
+    () => generateCommercialIntelligence(result, filteredRecords, NIREA_ALIASES, NIREA_NAME),
+    [result, filteredRecords],
+  );
 
   const fmt = (n: number) => n.toLocaleString('es-UY', { maximumFractionDigits: 0 });
   const fmtT = (n: number) => `${(n / 1000).toFixed(1)} t`;
@@ -398,6 +404,7 @@ export function NireaSanJacinto() {
             { id: 'cortes' as const, label: 'Por corte' },
             { id: 'mes' as const, label: 'Por mes' },
             { id: 'certificadores' as const, label: 'Certificadores' },
+            { id: 'inteligencia' as const, label: '🧠 Inteligencia' },
           ]).map(v => (
             <button
               key={v.id}
@@ -472,6 +479,10 @@ export function NireaSanJacinto() {
               fmtPct={fmtPct}
               highlightCaliral
             />
+          )}
+
+          {view === 'inteligencia' && (
+            <CommercialIntelligencePanel intelligence={intelligence} clienteName={NIREA_NAME} />
           )}
         </div>
       </div>
