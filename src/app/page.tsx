@@ -21,11 +21,14 @@ import { ClientesEstrategicos } from '@/components/clientes-estrategicos/Cliente
 import { CopilotPage } from '@/components/copilot/CopilotPage';
 import { initialPull } from '@/lib/googleSheets';
 import ErrorBoundary from '@/components/ErrorBoundary';
+import { DataPreloader } from '@/components/DataPreloader';
 
 export default function Home() {
   const activeTab = useAppStore(s => s.activeTab);
 
-  // Firebase pull runs in background — app renders immediately with local data
+  // Firebase pull runs in background — app renders immediately with local data.
+  // DataPreloader carga TODOS los datasets en paralelo al iniciar la app,
+  // para que cualquier pestaña tenga datos instantáneamente al abrirla.
   useEffect(() => {
     initialPull().catch(() => { /* Firebase not available, use local data */ });
   }, []);
@@ -61,6 +64,7 @@ export default function Home() {
           </ErrorBoundary>
         </main>
       </div>
+      <DataPreloader />
       <AIAssistant />
     </ErrorBoundary>
   );
