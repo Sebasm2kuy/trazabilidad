@@ -119,30 +119,31 @@ export function computeCapturaCaliral(records: MovRecord[], clienteAliases: stri
   // 1. Como DEPÓSITO/DESTINO (ed) — la mercadería ingresa al depósito de CALIRAL
   // 2. Como CERTIFICADOR (cf) — CALIRAL emite el COTE de exportación
   //
-  // FLUJO REAL: la mercadería primero ingresa a CALIRAL (ed), luego CALIRAL
-  // la certifica y exporta (cf). La certificación es CONSECUENCIA del depósito,
-  // no un flujo independiente. Las toneladas certificadas ya están incluidas
-  // en las toneladas depositadas.
-  //
-  // Por lo tanto, el ÍNDICE DE CAPTURA se calcula sobre el DEPÓSITO (ed),
-  // que es el momento donde CALIRAL captura la mercadería del cliente.
-  // La certificación se muestra como información complementaria, no se suma.
+  // CORRECCIÓN: el flujo NO siempre es depósito→certificación. CALIRAL puede
+  // certificar exportaciones a China/USA sin recibir la mercadería en depósito
+  // (Matriz C). Por lo tanto, para el ÍNDICE DE CAPTURA y los breakdowns,
+  // CALIRAL se considera activo cuando participa de CUALQUIER forma (ed O cf).
+  // Las toneladas NO se suman doble: cada registro está en un solo cuadrante
+  // de la matriz, y caliralPn = Σ(pn de registros con ed O cf CALIRAL).
   const isCaliralCf = (r: MovRecord): boolean => {
     return (r.cf || '').toUpperCase().includes('CALIRAL');
   };
   const isCaliralEd = (r: MovRecord): boolean => {
     return (r.ed || '').toUpperCase().includes('CALIRAL');
   };
+  // CALIRAL participa si aparece como depósito O como certificador
+  const isCaliralActive = (r: MovRecord): boolean => isCaliralEd(r) || isCaliralCf(r);
 
-  // Para el capture index: usar SOLO depósito (ed) como captura real
-  // La certificación (cf) se muestra como info complementaria pero no se suma
+  // Para el capture index: CALIRAL activo = depósito O certificación
+  const caliralActiveRecs = clienteRecs.filter(isCaliralActive);
   const caliralEdRecs = clienteRecs.filter(isCaliralEd);
   const caliralCfRecs = clienteRecs.filter(isCaliralCf);
-  const caliralRecs = caliralEdRecs; // El capture index se basa en depósito
-  const otrosRecs = clienteRecs.filter(r => !isCaliralEd(r));
+  const caliralRecs = caliralActiveRecs;
+  const otrosRecs = clienteRecs.filter(r => !isCaliralActive(r));
 
   const totalClientePn = clienteRecs.reduce((s, r) => s + (r.pn || 0), 0);
-  const caliralPn = caliralEdRecs.reduce((s, r) => s + (r.pn || 0), 0); // Solo depósito
+  // caliralPn = toneladas donde CALIRAL participó (ed O cf), sin doble conteo
+  const caliralPn = caliralActiveRecs.reduce((s, r) => s + (r.pn || 0), 0);
   const otrosPn = totalClientePn - caliralPn;
   const captureIndex = totalClientePn > 0 ? (caliralPn / totalClientePn) * 100 : 0;
 
@@ -167,14 +168,16 @@ export function computeCapturaCaliral(records: MovRecord[], clienteAliases: stri
   const matrizCPn = matrizC.reduce((s, r) => s + (r.pn || 0), 0);
   const matrizDPn = matrizD.reduce((s, r) => s + (r.pn || 0), 0);
 
-  // Desgloses — usar isCaliralEd para los breakdowns (depósito = captura real)
-  const byPais = breakdownBy(clienteRecs, r => r.pa || '—', isCaliralEd);
-  const byCorte = breakdownBy(clienteRecs, r => r.co || '—', isCaliralEd);
-  const byMes = breakdownBy(clienteRecs, r => (r.f || '').substring(0, 7) || '—', isCaliralEd)
+  // Desgloses — usar isCaliralActive (ed O cf) para los breakdowns
+  // FIX: antes solo usaba isCaliralEd, lo que hacía que países donde CALIRAL
+  // certificó pero no recibió depósito (Matriz C) mostraran 0 captura.
+  const byPais = breakdownBy(clienteRecs, r => r.pa || '—', isCaliralActive);
+  const byCorte = breakdownBy(clienteRecs, r => r.co || '—', isCaliralActive);
+  const byMes = breakdownBy(clienteRecs, r => (r.f || '').substring(0, 7) || '—', isCaliralActive)
     .sort((a, b) => a.label.localeCompare(b.label));
-  const byAnio = breakdownBy(clienteRecs, r => (r.f || '').substring(0, 4) || '—', isCaliralEd)
+  const byAnio = breakdownBy(clienteRecs, r => (r.f || '').substring(0, 4) || '—', isCaliralActive)
     .sort((a, b) => a.label.localeCompare(b.label));
-  const byCertificador = breakdownBy(clienteRecs, r => r.cf || '—', isCaliralEd)
+  const byCertificador = breakdownBy(clienteRecs, r => r.cf || '—', isCaliralActive)
     .sort((a, b) => b.totalPn - a.totalPn);
 
   // Países donde CALIRAL no participó

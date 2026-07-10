@@ -361,7 +361,7 @@ export function NireaSanJacinto() {
 
             {/* Nota aclaratoria */}
             <p className="text-[10px] text-slate-400 mt-3 italic">
-              El flujo es: productor → depósito → certificación → exportación. La matriz muestra los 4 escenarios posibles. El <strong>índice de captura</strong> mide cuánto depositó en CALIRAL (A+B). La <strong>certificación</strong> muestra cuánto exportó CALIRAL (A+C). Sin doble conteo: cada registro está en un solo cuadrante.
+              El flujo es: productor → depósito → certificación → exportación. La matriz muestra los 4 escenarios posibles. El <strong>índice de captura</strong> mide en cuántas exportaciones participó CALIRAL de cualquier forma (depósito A+B o certificación A+C), sin doble conteo: cada registro se cuenta una sola vez.
             </p>
           </Card>
         </div>
