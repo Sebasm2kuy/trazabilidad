@@ -80,13 +80,66 @@ export function CentroDeDatos() {
   const [history, setHistory] = useState<LoadSession[]>([]);
   const [lastSession, setLastSession] = useState<LoadSession | null>(null);
   const [dragOver, setDragOver] = useState<FileType | null>(null);
+  const [directDataCounts, setDirectDataCounts] = useState<{
+    nacional: number;
+    ingresos: number;
+    exportaciones: number;
+    pallets: number;
+  }>({ nacional: 0, ingresos: 0, exportaciones: 0, pallets: 0 });
   const fileInputRefs = useRef<Record<FileType, HTMLInputElement | null>>({
     nacional: null, ingresos: null, exportaciones: null, pallets: null,
   });
 
+  // Cargar historial del ImportManager + detectar datos cargados directamente
+  // en localStorage (por otras pestañas o cargas manuales que no pasaron
+  // por el ImportManager). Esto evita que el Centro de Datos diga "Sin datos"
+  // cuando las otras pestañas sí tienen datos.
   useEffect(() => {
-    setHistory(ImportManager.getHistory());
-    setLastSession(ImportManager.getLastSession());
+    const loadStatus = () => {
+      setHistory(ImportManager.getHistory());
+      setLastSession(ImportManager.getLastSession());
+
+      // Detectar datos cargados directamente en localStorage
+      try {
+        const nacionalRaw = localStorage.getItem('mercado_nacional_data');
+        let nacionalCount = 0;
+        if (nacionalRaw) {
+          const parsed = JSON.parse(nacionalRaw);
+          if (Array.isArray(parsed)) nacionalCount = parsed.length;
+          else if (parsed && typeof parsed === 'object' && Array.isArray((parsed as { data?: unknown[] }).data)) {
+            nacionalCount = (parsed as { data: unknown[] }).data.length;
+          }
+        }
+
+        const depImportedRaw = localStorage.getItem('trazabilidad_dep_imported');
+        const depNewRaw = localStorage.getItem('trazabilidad_dep_new_records');
+        const depCount =
+          (depImportedRaw ? (JSON.parse(depImportedRaw) as unknown[]).length : 0) +
+          (depNewRaw ? (JSON.parse(depNewRaw) as unknown[]).length : 0);
+
+        const expImportedRaw = localStorage.getItem('trazabilidad_exp_imported');
+        const expCount = expImportedRaw ? (JSON.parse(expImportedRaw) as unknown[]).length : 0;
+
+        const stockRaw = localStorage.getItem('trazabilidad_stock_data');
+        let palletsCount = 0;
+        if (stockRaw) {
+          const stock = JSON.parse(stockRaw) as { pallets?: unknown[] };
+          palletsCount = Array.isArray(stock?.pallets) ? stock.pallets.length : 0;
+        }
+
+        setDirectDataCounts({
+          nacional: nacionalCount,
+          ingresos: depCount,
+          exportaciones: expCount,
+          pallets: palletsCount,
+        });
+      } catch { /* ignore parse errors */ }
+    };
+
+    loadStatus();
+    // Recargar cuando se dispare el evento de datos listos
+    window.addEventListener('trazabilidad-data-ready', loadStatus);
+    return () => window.removeEventListener('trazabilidad-data-ready', loadStatus);
   }, []);
 
   const handleFileSelect = (tipo: FileType, file: File) => {
@@ -145,8 +198,11 @@ export function CentroDeDatos() {
   };
 
   // Estado general del sistema
-  const totalRegistros = history.reduce((s, h) => s + h.totalRegistros, 0);
-  const systemUpdated = lastSession !== null;
+  // Considera tanto sesiones del ImportManager como datos cargados
+  // directamente en localStorage (por otras pestañas o cargas manuales)
+  const directTotal = directDataCounts.nacional + directDataCounts.ingresos + directDataCounts.exportaciones + directDataCounts.pallets;
+  const totalRegistros = history.reduce((s, h) => s + h.totalRegistros, 0) + directTotal;
+  const systemUpdated = lastSession !== null || directTotal > 0;
   const integrityScore = lastSession
     ? Math.max(0, 100 - lastSession.errores * 0.5 - lastSession.advertencias * 0.1)
     : 0;
