@@ -18,6 +18,7 @@
 
 import type { MovRecord } from '@/intelligence/types';
 import type { CapturaResult, CapturaBreakdown } from '@/intelligence-engine/capturaCaliral';
+import { filterByCliente } from '@/intelligence-engine/capturaCaliral';
 import { linearRegression, predictLinear, type TimeSeriesPoint } from '@/prediction/engine';
 
 // ============================================================
@@ -660,54 +661,105 @@ export function detectRecoverableClients(
   records: MovRecord[],
   clienteAliases: string[],
 ): RecoverableClient[] {
-  // Por ahora, este análisis se aplica al cliente actual.
-  // Si el cliente dejó de usar CALIRAL recientemente, es recuperable.
-  if (result.byMes.length === 0) return [];
+  // Filtrar los registros del cliente usando la MISMA función que computeCapturaCaliral
+  const clienteRecs = filterByCliente(records, clienteAliases);
+  if (clienteRecs.length === 0) return [];
 
-  const sortedMonths = [...result.byMes].sort((a, b) => a.label.localeCompare(b.label));
-  const lastCaliralMonth = sortedMonths.slice().reverse().find(m => m.caliralPn > 0);
+  // BUG FIX: Antes solo mirábamos `result.byMes[i].caliralPn` que se basa
+  // EXCLUSIVAMENTE en depósito (ed). Pero CALIRAL puede estar certificando
+  // (cf) sin recibir depósito. Si San Jacinto exporta y CALIRAL certifica,
+  // CALIRAL ESTÁ activo, aunque no reciba depósito.
+  //
+  // Ahora usamos los records crudos para detectar meses donde CALIRAL
+  // participó de CUALQUIER forma (ed O cf).
 
-  if (!lastCaliralMonth) {
-    // CALIRAL nunca participó — no es recuperable, es prospecto nuevo
+  const isCaliralEd = (r: MovRecord): boolean => (r.ed || '').toUpperCase().includes('CALIRAL');
+  const isCaliralCf = (r: MovRecord): boolean => (r.cf || '').toUpperCase().includes('CALIRAL');
+
+  // Conjunto de meses (YYYY-MM) donde CALIRAL participó (ed O cf)
+  const monthsWithCaliralActivity = new Set<string>();
+  // Conjunto de TODOS los meses del cliente en el dataset
+  const allClienteMonths = new Set<string>();
+  // Registros por mes para calcular toneladas perdidas
+  const tonsByMonth = new Map<string, number>();
+  // Para cada mes, si CALIRAL participó (ed O cf)
+  const monthHasCaliral = new Map<string, boolean>();
+
+  for (const r of clienteRecs) {
+    const month = (r.f || '').substring(0, 7);
+    if (!month) continue;
+    allClienteMonths.add(month);
+    tonsByMonth.set(month, (tonsByMonth.get(month) || 0) + (r.pn || 0));
+
+    const hasCaliral = isCaliralEd(r) || isCaliralCf(r);
+    if (hasCaliral) {
+      monthsWithCaliralActivity.add(month);
+      monthHasCaliral.set(month, true);
+    } else if (!monthHasCaliral.has(month)) {
+      monthHasCaliral.set(month, false);
+    }
+  }
+
+  // Si CALIRAL nunca participó en ningún mes — es prospecto nuevo
+  if (monthsWithCaliralActivity.size === 0) {
     return [{
       name: clienteAliases[0] || 'Cliente',
       lastCaliralMonth: null,
       monthsSinceLast: -1,
       lostTons: result.totalClientePn / 1000,
       probability: 'baja',
-      reason: 'CALIRAL nunca participó en exportaciones de este cliente. Es un prospecto nuevo, no un cliente recuperable.',
+      reason: 'CALIRAL nunca participó en exportaciones de este cliente (ni como depósito ni como certificador). Es un prospecto nuevo, no un cliente recuperable.',
     }];
   }
 
-  const lastMonthDate = new Date(lastCaliralMonth.label + '-01');
-  const now = new Date();
-  const monthsSinceLast = Math.max(0,
-    (now.getFullYear() - lastMonthDate.getFullYear()) * 12 +
-    (now.getMonth() - lastMonthDate.getMonth()),
-  );
+  // Último mes con actividad CALIRAL (cualquier tipo)
+  const sortedCaliralMonths = Array.from(monthsWithCaliralActivity).sort();
+  const lastCaliralMonth = sortedCaliralMonths[sortedCaliralMonths.length - 1];
 
-  // Calcular toneladas perdidas desde la última actividad
-  const lastIdx = sortedMonths.findIndex(m => m.label === lastCaliralMonth.label);
-  const monthsAfter = sortedMonths.slice(lastIdx + 1);
-  const lostTons = monthsAfter.reduce((s, m) => s + m.totalPn, 0) / 1000;
+  // Todos los meses del dataset, ordenados
+  const sortedAllMonths = Array.from(allClienteMonths).sort();
+  const lastDatasetMonth = sortedAllMonths[sortedAllMonths.length - 1];
 
+  // Meses DESPUÉS del último mes con CALIRAL (meses realmente sin actividad)
+  const monthsAfterCaliral = sortedAllMonths.filter(m => m > lastCaliralMonth);
+  const lostTons = monthsAfterCaliral.reduce((s, m) => s + (tonsByMonth.get(m) || 0), 0) / 1000;
+
+  // monthsSinceLast: comparar contra el último mes del DATASET, no contra `now`.
+  // Si el dataset llega a junio y CALIRAL estuvo activo en junio,
+  // monthsSinceLast = 0 (está activo en el último mes del dataset).
+  // Solo si hay meses posteriores sin CALIRAL, esos son meses "perdidos".
+  const monthsSinceLast = monthsAfterCaliral.length;
+
+  // Si no hay meses posteriores sin CALIRAL, el cliente está ACTIVO
+  if (monthsAfterCaliral.length === 0) {
+    return [{
+      name: clienteAliases[0] || 'Cliente',
+      lastCaliralMonth,
+      monthsSinceLast: 0,
+      lostTons: 0,
+      probability: 'alta',
+      reason: `CALIRAL sigue activo con este cliente (última actividad: ${lastCaliralMonth}, que es el último mes del dataset ${lastDatasetMonth}). No es un cliente recuperable — la relación está vigente tanto en depósito como en certificación.`,
+    }];
+  }
+
+  // Hay meses posteriores sin CALIRAL — calcular probabilidad de recuperación
   let probability: RecoveryProbability;
   let reason: string;
 
   if (monthsSinceLast <= 3) {
     probability = 'alta';
-    reason = `CALIRAL estuvo activo hace ${monthsSinceLast} mes(es). Reciente, alta probabilidad de reactivar la relación.`;
+    reason = `CALIRAL estuvo activo hasta ${lastCaliralMonth}. Última actividad hace ${monthsSinceLast} mes(es) dentro del dataset. Reciente, alta probabilidad de reactivar la relación.`;
   } else if (monthsSinceLast <= 6) {
     probability = 'media';
-    reason = `CALIRAL estuvo activo hace ${monthsSinceLast} meses. Ventana de recuperación moderada.`;
+    reason = `CALIRAL estuvo activo hasta ${lastCaliralMonth}. ${monthsSinceLast} meses sin actividad CALIRAL en el dataset. Ventana de recuperación moderada.`;
   } else {
     probability = 'baja';
-    reason = `CALIRAL estuvo activo hace ${monthsSinceLast} meses. Relación fría, requiere reacercamiento comercial.`;
+    reason = `CALIRAL estuvo activo hasta ${lastCaliralMonth}. ${monthsSinceLast} meses sin actividad CALIRAL. Relación fría, requiere reacercamiento comercial.`;
   }
 
   return [{
     name: clienteAliases[0] || 'Cliente',
-    lastCaliralMonth: lastCaliralMonth.label,
+    lastCaliralMonth,
     monthsSinceLast,
     lostTons,
     probability,
