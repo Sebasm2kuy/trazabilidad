@@ -14,6 +14,7 @@ import {
   Warehouse, Boxes, Network, MessageSquare, Send, Upload, GitCompare,
 } from 'lucide-react';
 import { dataUrl } from '@/lib/staticData';
+import { loadNacionalRecords, clearNacionalCache } from '@/lib/nacionalLoader';
 import { fmt } from '@/lib/utils';
 import { toast } from 'sonner';
 import { NacionalUploadButton } from '@/components/nacional-upload/NacionalUploadButton';
@@ -440,65 +441,20 @@ export default function MercadoNacional() {
         const ra = await fetch(dataUrl('data/nacional_analytics.json'));
         if (ra.ok && !cancelled) setAnalytics(await ra.json());
 
-        // 1. Primero intentar cargar desde Firebase (datos actualizados por el usuario)
-        // PERO respetar el bloqueo post-reset para no repoblar datos borrados
-        const fbUrl = 'https://trazabilidad-9aa3c-default-rtdb.firebaseio.com';
-        const blockFlag = localStorage.getItem('trazabilidad_block_firebase_pull_until');
-        const isBlocked = blockFlag && Date.now() < parseInt(blockFlag, 10);
-        if (!isBlocked) {
-          setLoadProgress('Verificando datos actualizados…');
-          try {
-            const metaResp = await fetch(`${fbUrl}/mercado_nacional_meta.json`);
-            if (metaResp.ok) {
-              const meta = await metaResp.json();
-              if (meta && meta.totalRegistros && meta.totalChunks) {
-                setLoadProgress(`Cargando ${meta.totalRegistros.toLocaleString()} registros actualizados (${meta.fileName || 'Excel'})…`);
-                // Cargar todos los chunks
-                const allRecords: MovRecord[] = [];
-                for (let i = 0; i < meta.totalChunks; i++) {
-                  const chunkResp = await fetch(`${fbUrl}/mercado_nacional_data/${i}.json`);
-                  if (chunkResp.ok) {
-                    const chunk = await chunkResp.json();
-                    if (Array.isArray(chunk)) {
-                      allRecords.push(...chunk);
-                    }
-                  }
-                }
-                if (allRecords.length > 0 && !cancelled) {
-                  // POST-PROCESAMIENTO: derivar tpd (tipo de producto) del campo d (denominación)
-                  // si está vacío. Los datos antiguos en Firebase tienen tpd vacío
-                  // porque se subieron con un parser que no extraía este campo.
-                  for (const r of allRecords) {
-                    if (!r.tpd) {
-                      const denom = (r.d || '').toUpperCase();
-                      if (denom.includes('CONGEL')) {
-                        r.tpd = 'Congelado';
-                      } else if (denom.includes('FRESC') || denom.includes('REFRIG')) {
-                        r.tpd = 'Fresco';
-                      }
-                    }
-                  }
-                  setRecords(allRecords);
-                  setLoadProgress('');
-                  setLoadingRecords(false);
-                  toast.info(`Datos cargados desde la nube: ${allRecords.length.toLocaleString()} registros (actualizado ${meta.fecha ? new Date(meta.fecha).toLocaleDateString('es-UY') : 'recientemente'}).`);
-                  return; // No cargar el .json.gz
-                }
-              }
-            }
-          } catch (fbErr) {
-            console.warn('Firebase load failed, falling back to .json.gz:', fbErr);
-          }
-        }
-
-        // 2. Si no hay datos en Firebase, no intentar cargar el .json.gz
-        //    (archivo borrado del bundle). Mostrar estado vacío.
+        // Usar loadNacionalRecords() que YA TIENE CACHE en memoria.
+        // El DataPreloader carga los 200K registros al iniciar la app,
+        // así que esta llamada es instantánea si ya se cargó.
+        // Solo descarga de Firebase si el cache está vacío.
+        setLoadProgress('Cargando registros del mercado…');
+        const recs = await loadNacionalRecords();
         if (!cancelled) {
-          setRecords([]);
+          setRecords(recs);
           setLoadProgress('');
           setLoadingRecords(false);
-          // Mostrar mensaje informativo si no hay datos
-          if (!records.length) {
+          if (recs.length > 0) {
+            // No mostrar toast si ya estaba cacheado (carga instantánea)
+            // Solo mostrar si fue una carga nueva
+          } else {
             toast.info('Sin datos del mercado. Subí el Excel MGAP desde el botón "Subir Excel MGAP".');
           }
         }
@@ -1587,6 +1543,8 @@ export default function MercadoNacional() {
         });
 
         toast.success(`✅ ${fmt(mapped.length)} registros guardados en la nube. Quedarán disponibles para futuras sesiones.`);
+        // Limpiar cache para que la próxima carga use los datos nuevos
+        clearNacionalCache();
       } catch (saveErr) {
         console.error('Error guardando en Firebase:', saveErr);
         toast.info(`Excel cargado: ${fmt(mapped.length)} registros (solo esta sesión). No se pudo guardar en la nube.`);
