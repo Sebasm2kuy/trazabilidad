@@ -661,8 +661,20 @@ export function detectRecoverableClients(
   records: MovRecord[],
   clienteAliases: string[],
 ): RecoverableClient[] {
-  // Filtrar los registros del cliente usando la MISMA función que computeCapturaCaliral
-  const clienteRecs = filterByCliente(records, clienteAliases);
+  // OPTIMIZACIÓN: si los records ya están filtrados por cliente (caso normal
+  // cuando vienen del cache pre-filtrado), no volver a aplicar filterByCliente.
+  // filterByCliente escanea todos los records; si ya son los del cliente,
+  // sería redundante. Detectamos si ya están filtrados verificando si alguno
+  // contiene el alias del cliente en cf o p.
+  const aliasUpper = clienteAliases.map(a => a.toUpperCase());
+  const alreadyFiltered = records.length > 0 && records.some(r => {
+    const fields = [r.cf || '', r.p || ''].map(s => s.toUpperCase());
+    return aliasUpper.some(a => fields.some(f => f.includes(a)));
+  });
+
+  // Si no están filtrados, aplicar filterByCliente (escanea 200K records)
+  // Si ya están filtrados, usarlos directamente (instantáneo)
+  const clienteRecs = alreadyFiltered ? records : filterByCliente(records, clienteAliases);
   if (clienteRecs.length === 0) return [];
 
   // BUG FIX: Antes solo mirábamos `result.byMes[i].caliralPn` que se basa

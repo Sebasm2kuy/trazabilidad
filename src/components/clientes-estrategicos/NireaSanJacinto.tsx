@@ -18,7 +18,7 @@ import { cn } from '@/lib/utils';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { loadNacionalRecords } from '@/lib/nacionalLoader';
+import { loadNacionalRecords, getCachedClienteRecords } from '@/lib/nacionalLoader';
 import { NacionalUploadButton } from '@/components/nacional-upload/NacionalUploadButton';
 import {
   computeCapturaCaliral, generateCapturaInsights,
@@ -73,9 +73,23 @@ export function NireaSanJacinto() {
   const presets = useMemo(() => getPeriodPresets(), []);
 
   useEffect(() => {
+    // OPTIMIZACIÓN: si ya hay cache pre-filtrado para NIREA, usarlo instantáneamente
+    // sin esperar el async. Esto hace que cambiar de pestaña y volver sea inmediato.
+    const cachedNirea = getCachedClienteRecords('NIREA');
+    if (cachedNirea && cachedNirea.length > 0) {
+      setRecords(cachedNirea);
+      setLoading(false);
+      return;
+    }
+
     let mounted = true;
     loadNacionalRecords()
-      .then(recs => mounted && setRecords(recs))
+      .then(() => {
+        if (!mounted) return;
+        // Después de cargar, usar el cache pre-filtrado si existe
+        const cached = getCachedClienteRecords('NIREA');
+        setRecords(cached ?? []);
+      })
       .catch(e => console.error('[nirea] carga falló:', e))
       .finally(() => mounted && setLoading(false));
     return () => { mounted = false; };
@@ -106,9 +120,16 @@ export function NireaSanJacinto() {
 
   const result = useMemo(() => computeCapturaCaliral(filteredRecords, NIREA_ALIASES), [filteredRecords]);
   const insights = useMemo(() => generateCapturaInsights(result, NIREA_NAME), [result]);
+  // OPTIMIZACIÓN: solo calcular inteligencia comercial cuando se muestra esa view.
+  // generateCommercialIntelligence es pesado (corre sobre filteredRecords + records).
+  // No tiene sentido calcularlo si el usuario está viendo 'resumen' o 'paises'.
+  // Pasamos `records` (NO filteredRecords) a detectRecoverableClients para que
+  // detecte la última actividad real del cliente, no solo la del período seleccionado.
   const intelligence = useMemo(
-    () => generateCommercialIntelligence(result, filteredRecords, NIREA_ALIASES, NIREA_NAME),
-    [result, filteredRecords],
+    () => view === 'inteligencia'
+      ? generateCommercialIntelligence(result, records, NIREA_ALIASES, NIREA_NAME)
+      : null,
+    [result, records, view],
   );
 
   const fmt = (n: number) => n.toLocaleString('es-UY', { maximumFractionDigits: 0 });
@@ -481,8 +502,14 @@ export function NireaSanJacinto() {
             />
           )}
 
-          {view === 'inteligencia' && (
+          {view === 'inteligencia' && intelligence && (
             <CommercialIntelligencePanel intelligence={intelligence} clienteName={NIREA_NAME} />
+          )}
+          {view === 'inteligencia' && !intelligence && (
+            <Card className="p-8 text-center">
+              <Activity className="w-6 h-6 animate-pulse text-violet-500 mx-auto mb-2" />
+              <p className="text-sm text-slate-500">Calculando inteligencia comercial…</p>
+            </Card>
           )}
         </div>
       </div>
