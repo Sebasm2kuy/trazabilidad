@@ -111,18 +111,28 @@ function getExportRefsByCote(expRecords: ExpRecord[]): Map<string, ExportRef[]> 
 }
 
 async function loadExportaciones(): Promise<ExpRecord[]> {
-  // Use ONLY pre-processed JSON from exportaciones MGAP file as base
-  // (NOT trazabilidad_exp_imported because it has old/duplicate data)
+  // 1. Base: datos importados del Excel (trazabilidad_exp_imported)
   let baseRecords: ExpRecord[] = [];
   try {
-    const r = await fetch(dataUrl('data/exportaciones_frimaral.json'));
-    if (r.ok) {
-      const data = await r.json();
-      if (Array.isArray(data) && data.length > 0) baseRecords = data;
+    const importedRaw = localStorage.getItem(EXP_IMPORTED_KEY);
+    if (importedRaw) {
+      const parsed = JSON.parse(importedRaw);
+      if (Array.isArray(parsed) && parsed.length > 0) baseRecords = parsed;
     }
   } catch { /* ignore */ }
 
-  // Add ONLY NEW records created from "Exportaciones" (manual + PDF uploads)
+  // 2. Si no hay datos importados, intentar JSON estático pre-procesado
+  if (baseRecords.length === 0) {
+    try {
+      const r = await fetch(dataUrl('data/exportaciones_frimaral.json'));
+      if (r.ok) {
+        const data = await r.json();
+        if (Array.isArray(data) && data.length > 0) baseRecords = data;
+      }
+    } catch { /* ignore */ }
+  }
+
+  // 3. Agregar registros nuevos (manuales + PDF uploads)
   try {
     const newRecs = localStorage.getItem('trazabilidad_new_records');
     if (newRecs) {
@@ -136,7 +146,7 @@ async function loadExportaciones(): Promise<ExpRecord[]> {
     }
   } catch { /* ignore */ }
 
-  // Apply edits
+  // 4. Aplicar ediciones
   try {
     const editsRaw = localStorage.getItem('trazabilidad_exp_edits');
     if (editsRaw) {
@@ -153,19 +163,28 @@ async function loadExportaciones(): Promise<ExpRecord[]> {
 }
 
 async function loadDepositos(): Promise<Shipment[]> {
-  // Use ONLY pre-processed JSON from ingresos MGAP file as base
-  // (NOT trazabilidad_dep_imported because it has old/duplicate data)
+  // 1. Base: datos importados del Excel (trazabilidad_dep_imported)
   let baseRecords: Shipment[] = [];
   try {
-    const r = await fetch(dataUrl('data/ingresos_frimaral.json'));
-    if (r.ok) {
-      const data = await r.json();
-      if (Array.isArray(data) && data.length > 0) baseRecords = data;
+    const importedRaw = localStorage.getItem(DEP_IMPORTED_KEY);
+    if (importedRaw) {
+      const parsed = JSON.parse(importedRaw);
+      if (Array.isArray(parsed) && parsed.length > 0) baseRecords = parsed;
     }
   } catch { /* ignore */ }
 
-  // Add ONLY NEW records created from "A Depósitos" (manual + PDF uploads)
-  // These have ids starting with 'new_' or 'manual_' or 'pdf_'
+  // 2. Si no hay datos importados, intentar JSON estático pre-procesado
+  if (baseRecords.length === 0) {
+    try {
+      const r = await fetch(dataUrl('data/ingresos_frimaral.json'));
+      if (r.ok) {
+        const data = await r.json();
+        if (Array.isArray(data) && data.length > 0) baseRecords = data;
+      }
+    } catch { /* ignore */ }
+  }
+
+  // 3. Agregar registros nuevos (manuales + PDF uploads)
   try {
     const newRecs = localStorage.getItem('trazabilidad_dep_new_records');
     if (newRecs) {
@@ -179,7 +198,7 @@ async function loadDepositos(): Promise<Shipment[]> {
     }
   } catch { /* ignore */ }
 
-  // Apply edits (override fields) - only for records that exist in baseRecords
+  // 4. Aplicar ediciones
   try {
     const editsRaw = localStorage.getItem('trazabilidad_dep_edits');
     if (editsRaw) {
