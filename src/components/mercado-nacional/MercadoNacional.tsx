@@ -1509,7 +1509,7 @@ export default function MercadoNacional() {
 
       // Guardar en Firebase para que persista entre sesiones
       try {
-        const fbUrl = 'https://trazabilidad-9aa3c-default-rtdb.firebaseio.com';
+        const fbUrl = 'https://centrologisticofrimaralv-75fe1-default-rtdb.firebaseio.com';
         // Guardar metadata (sin los registros completos para no saturar Firebase)
         const metadata = {
           fecha: new Date().toISOString(),

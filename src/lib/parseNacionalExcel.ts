@@ -10,7 +10,7 @@
 
 import type { MovRecord } from '@/intelligence/types';
 
-const FB_URL = 'https://trazabilidad-9aa3c-default-rtdb.firebaseio.com';
+const FB_URL = 'https://centrologisticofrimaralv-75fe1-default-rtdb.firebaseio.com';
 
 function cleanStr(v: unknown): string {
   if (v === null || v === undefined) return '';

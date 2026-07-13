@@ -12,7 +12,7 @@ const OLD_SETTINGS_KEY = 'trazabilidad_sheets_url'; // Legacy Google Sheets key
 const SYNC_DEBOUNCE_MS = 3000; // Wait 3s after last change before pushing
 
 // Firebase URL — prefer deployment configuration, then optional browser override for static hosts.
-const DEFAULT_FIREBASE_URL = 'https://trazabilidad-9aa3c-default-rtdb.firebaseio.com';
+const DEFAULT_FIREBASE_URL = 'https://centrologisticofrimaralv-75fe1-default-rtdb.firebaseio.com';
 const FIREBASE_URL = (
   process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL ||
   (typeof window !== 'undefined' ? (window as unknown as Record<string, unknown>).TRZ_FB_URL as string | undefined : undefined) ||

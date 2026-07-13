@@ -301,7 +301,7 @@ export const ImportManager: IImportManager = {
       localStorage.setItem('trazabilidad_stock_data', JSON.stringify(stockLoad));
       // Sincronizar con Firebase
       try {
-        const FB_URL = 'https://trazabilidad-9aa3c-default-rtdb.firebaseio.com';
+        const FB_URL = 'https://centrologisticofrimaralv-75fe1-default-rtdb.firebaseio.com';
         await fetch(`${FB_URL}/trazabilidad_stock_data.json`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
@@ -330,7 +330,7 @@ export const ImportManager: IImportManager = {
       localStorage.setItem('trazabilidad_dep_imported', JSON.stringify(shipments));
       // Sincronizar con Firebase
       try {
-        const FB_URL = 'https://trazabilidad-9aa3c-default-rtdb.firebaseio.com';
+        const FB_URL = 'https://centrologisticofrimaralv-75fe1-default-rtdb.firebaseio.com';
         await fetch(`${FB_URL}/trazabilidad_dep_imported.json`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
@@ -361,7 +361,7 @@ export const ImportManager: IImportManager = {
       localStorage.setItem('trazabilidad_exp_imported', JSON.stringify(exports));
       // Sincronizar con Firebase
       try {
-        const FB_URL = 'https://trazabilidad-9aa3c-default-rtdb.firebaseio.com';
+        const FB_URL = 'https://centrologisticofrimaralv-75fe1-default-rtdb.firebaseio.com';
         await fetch(`${FB_URL}/trazabilidad_exp_imported.json`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },

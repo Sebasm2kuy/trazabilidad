@@ -17,7 +17,7 @@ export const CLIENTES_ESTRATEGICOS = [
 
 export const DAY_MS = 1000 * 60 * 60 * 24;
 export const CHUNK_SIZE = 5000;
-export const FIREBASE_URL = 'https://trazabilidad-9aa3c-default-rtdb.firebaseio.com';
+export const FIREBASE_URL = 'https://centrologisticofrimaralv-75fe1-default-rtdb.firebaseio.com';
 
 // --- Enums ---
 
