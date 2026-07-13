@@ -1,0 +1,21 @@
+{
+  "rules": {
+    "trazabilidad_new_records": { ".read": true, ".write": true },
+    "trazabilidad_exp_edits": { ".read": true, ".write": true },
+    "trazabilidad_exp_deleted": { ".read": true, ".write": true },
+    "trazabilidad_exp_ingresos": { ".read": true, ".write": true },
+    "trazabilidad_dep_edits": { ".read": true, ".write": true },
+    "trazabilidad_dep_new_records": { ".read": true, ".write": true },
+    "trazabilidad_dep_deleted": { ".read": true, ".write": true },
+    "trazabilidad_dep_imported": { ".read": true, ".write": true },
+    "trazabilidad_exp_imported": { ".read": true, ".write": true },
+    "trazabilidad_stock_data": { ".read": true, ".write": true },
+    "trazabilidad_stock_assignments": { ".read": true, ".write": true },
+    "trazabilidad_import_history": { ".read": true, ".write": true },
+    "trazabilidad_recent_searches": { ".read": true, ".write": true },
+    "trazabilidad_block_firebase_pull_until": { ".read": true, ".write": true },
+    "cruce_caliral_edits": { ".read": true, ".write": true },
+    "mercado_nacional_data": { ".read": true, ".write": true },
+    "mercado_nacional_meta": { ".read": true, ".write": true }
+  }
+}

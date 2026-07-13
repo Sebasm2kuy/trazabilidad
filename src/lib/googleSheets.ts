@@ -85,6 +85,12 @@ async function firebaseGet(url: string): Promise<SyncData | null> {
       method: 'GET',
     });
     if (!resp.ok) {
+      // 401/403 = reglas de seguridad expiradas o denegadas
+      // Silencioso: la app sigue funcionando con localStorage
+      if (resp.status === 401 || resp.status === 403) {
+        console.warn('Firebase: acceso denegado (reglas de seguridad). Usando localStorage.');
+        return null;
+      }
       const text = await resp.text().catch(() => '');
       throw new Error(`Firebase GET ${resp.status}: ${text.slice(0, 100)}`);
     }
@@ -109,6 +115,10 @@ async function firebasePut(url: string, data: SyncData): Promise<boolean> {
       body: JSON.stringify(data),
     });
     if (!resp.ok) {
+      if (resp.status === 401 || resp.status === 403) {
+        console.warn('Firebase: escritura denegada (reglas de seguridad). Datos solo en localStorage.');
+        return false;
+      }
       const text = await resp.text().catch(() => '');
       throw new Error(`Firebase PUT ${resp.status}: ${text.slice(0, 100)}`);
     }
@@ -130,6 +140,10 @@ async function firebasePatch(url: string, data: SyncData): Promise<boolean> {
       body: JSON.stringify(data),
     });
     if (!resp.ok) {
+      if (resp.status === 401 || resp.status === 403) {
+        console.warn('Firebase: patch denegado (reglas de seguridad). Datos solo en localStorage.');
+        return false;
+      }
       const text = await resp.text().catch(() => '');
       throw new Error(`Firebase PATCH ${resp.status}: ${text.slice(0, 100)}`);
     }
