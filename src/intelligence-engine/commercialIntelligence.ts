@@ -508,22 +508,33 @@ export function computeCompetitorRanking(
   result: CapturaResult,
 ): CompetitorInfo[] {
   const totalPn = result.totalClientePn;
-  const competitors: CompetitorInfo[] = result.byCertificador.map(c => {
-    const isCaliral = c.label.toUpperCase().includes('CALIRAL');
-    const sharePct = totalPn > 0 ? (c.totalPn / totalPn) * 100 : 0;
+  // Usar byDeposito (ed) en vez de byCertificador (cf) — los competidores
+  // de CALIRAL son OTROS depósitos, no certificadores puros.
+  // Filtrar: solo establecimientos que recibieron mercadería como depósito.
+  // Excluir al propio cliente (NIREA/San Jacinto) y nombres vacíos.
+  const competitors: CompetitorInfo[] = result.byDeposito
+    .filter(c => c.label && c.label !== '—')
+    .filter(c => {
+      const upper = c.label.toUpperCase();
+      // Excluir al propio cliente (autogestión)
+      return !upper.includes('NIREA') && !upper.includes('SAN JACINTO');
+    })
+    .map(c => {
+      const isCaliral = c.label.toUpperCase().includes('CALIRAL');
+      const sharePct = totalPn > 0 ? (c.totalPn / totalPn) * 100 : 0;
 
-    // Calcular tendencia del competidor (últimos 3 vs anteriores 3 meses)
-    const trend = computeCompetitorTrend(result, c.label);
+      // Calcular tendencia del competidor (últimos 3 vs anteriores 3 meses)
+      const trend = computeCompetitorTrend(result, c.label);
 
-    return {
-      name: c.label,
-      tons: c.totalPn / 1000,
-      sharePct,
-      trend,
-      rank: 0, // se asigna después
-      isCaliral,
-    };
-  });
+      return {
+        name: c.label,
+        tons: c.totalPn / 1000,
+        sharePct,
+        trend,
+        rank: 0, // se asigna después
+        isCaliral,
+      };
+    });
 
   // Ordenar por toneladas y asignar rank
   competitors.sort((a, b) => b.tons - a.tons);
@@ -604,7 +615,7 @@ export function generateDiagnosis(
   }
 
   // 3. ¿Hay un competidor dominante?
-  const externalCompetitors = result.byCertificador
+  const externalCompetitors = result.byDeposito
     .filter(c => !c.label.toUpperCase().includes('CALIRAL') && !c.label.toUpperCase().includes('NIREA') && !c.label.toUpperCase().includes('SAN JACINTO'));
   if (externalCompetitors.length > 0 && externalCompetitors[0].totalPn > 0) {
     const top = externalCompetitors[0];
@@ -856,7 +867,7 @@ export function generateSmartAlerts(
   }
 
   // Alerta: competidor ganando
-  const externalCompetitors = result.byCertificador
+  const externalCompetitors = result.byDeposito
     .filter(c => !c.label.toUpperCase().includes('CALIRAL') && !c.label.toUpperCase().includes('NIREA') && !c.label.toUpperCase().includes('SAN JACINTO'));
   if (externalCompetitors.length > 0 && externalCompetitors[0].totalPn > result.caliralPn) {
     const top = externalCompetitors[0];
@@ -975,7 +986,7 @@ export function generateRecommendedActions(
   }
 
   // Acción basada en competidor dominante
-  const externalCompetitors = result.byCertificador
+  const externalCompetitors = result.byDeposito
     .filter(c => !c.label.toUpperCase().includes('CALIRAL') && !c.label.toUpperCase().includes('NIREA') && !c.label.toUpperCase().includes('SAN JACINTO'));
   if (externalCompetitors.length > 0) {
     const top = externalCompetitors[0];

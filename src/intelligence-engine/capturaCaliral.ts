@@ -65,6 +65,8 @@ export interface CapturaResult {
   byAnio: CapturaBreakdown[];
   /** Desglose por certificador (todos los que usó el cliente). */
   byCertificador: CapturaBreakdown[];
+  /** Desglose por depósito/establecimiento destino (ed). */
+  byDeposito: CapturaBreakdown[];
   /** Países donde CALIRAL NO participó. */
   paisesSinCaliral: string[];
   /** Cortes que NO pasaron por CALIRAL. */
@@ -109,7 +111,7 @@ export function computeCapturaCaliral(records: MovRecord[], clienteAliases: stri
       caliralCfPn: 0, caliralCfCount: 0, caliralEdPn: 0, caliralEdCount: 0,
       matrizAPn: 0, matrizACount: 0, matrizBPn: 0, matrizBCount: 0,
       matrizCPn: 0, matrizCCount: 0, matrizDPn: 0, matrizDCount: 0,
-      byPais: [], byCorte: [], byMes: [], byAnio: [], byCertificador: [],
+      byPais: [], byCorte: [], byMes: [], byAnio: [], byCertificador: [], byDeposito: [],
       paisesSinCaliral: [], cortesSinCaliral: [], competidores: [],
     };
   }
@@ -179,6 +181,11 @@ export function computeCapturaCaliral(records: MovRecord[], clienteAliases: stri
     .sort((a, b) => a.label.localeCompare(b.label));
   const byCertificador = breakdownBy(clienteRecs, r => r.cf || '—', isCaliralActive)
     .sort((a, b) => b.totalPn - a.totalPn);
+  // Desglose por depósito/establecimiento destino (ed) — identifica qué
+  // depósitos recibieron la mercadería. CALIRAL es un depósito, sus
+  // competidores son OTROS depósitos (no certificadores puros).
+  const byDeposito = breakdownBy(clienteRecs, r => r.ed || '—', isCaliralActive)
+    .sort((a, b) => b.totalPn - a.totalPn);
 
   // Países donde CALIRAL no participó
   const paisesConCaliral = new Set(caliralRecs.map(r => r.pa).filter(Boolean));
@@ -190,8 +197,11 @@ export function computeCapturaCaliral(records: MovRecord[], clienteAliases: stri
   const cortesSinCaliral = Array.from(new Set(clienteRecs.map(r => r.co).filter(Boolean)))
     .filter(c => !cortesConCaliral.has(c));
 
-  // Competidores: certificadores que el cliente usó además de CALIRAL
-  const competidores = Array.from(new Set(otrosRecs.map(r => r.cf).filter(Boolean)));
+  // Competidores: depósitos que el cliente usó además de CALIRAL
+  // (no certificadores puros — solo establecimientos que recibieron
+  // mercadería como depósito, igual que CALIRAL)
+  const competidores = Array.from(new Set(otrosRecs.map(r => r.ed).filter(Boolean)))
+    .filter(name => !name.toUpperCase().includes('CALIRAL'));
 
   return {
     totalClientePn, caliralPn, otrosPn, captureIndex,
@@ -202,7 +212,7 @@ export function computeCapturaCaliral(records: MovRecord[], clienteAliases: stri
     matrizBPn, matrizBCount: matrizB.length,
     matrizCPn, matrizCCount: matrizC.length,
     matrizDPn, matrizDCount: matrizD.length,
-    byPais, byCorte, byMes, byAnio, byCertificador,
+    byPais, byCorte, byMes, byAnio, byCertificador, byDeposito,
     paisesSinCaliral, cortesSinCaliral, competidores,
   };
 }
