@@ -206,19 +206,36 @@ export async function pullFromSheets(): Promise<{ count: number; error?: string 
   isSyncing = true;
 
   try {
-    const remote = await firebaseGet(url);
-    if (!remote) return { count: 0, error: 'No se pudo conectar a Firebase' };
-
+    // OPTIMIZACIÓN: descargar cada clave por separado en vez de toda la
+    // database de una vez. La database completa puede pesar 80+ MB (200K
+    // registros), lo que causa timeout si se descarga en un solo fetch.
+    // Descargando por clave, cada request es más pequeña y manejable.
     let count = 0;
     for (const key of SYNC_KEYS) {
-      if (remote[key] !== undefined && remote[key] !== null) {
-        const val = typeof remote[key] === 'string' ? remote[key] : JSON.stringify(remote[key]);
-        localStorage.setItem(key, val);
-        count++;
+      try {
+        const resp = await fetch(`${url}/${key}.json`, { method: 'GET' });
+        if (!resp.ok) {
+          if (resp.status === 401 || resp.status === 403) {
+            console.warn(`Firebase: acceso denegado para ${key}. Usando localStorage.`);
+            continue;
+          }
+          console.warn(`Firebase: error ${resp.status} para ${key}`);
+          continue;
+        }
+        const data = await resp.json();
+        if (data !== null && data !== undefined) {
+          const val = typeof data === 'string' ? data : JSON.stringify(data);
+          localStorage.setItem(key, val);
+          count++;
+        }
+      } catch (err) {
+        console.warn(`Firebase: no se pudo descargar ${key}:`, err);
       }
     }
 
-    localStorage.setItem(LAST_SYNC_KEY, new Date().toISOString());
+    if (count > 0) {
+      localStorage.setItem(LAST_SYNC_KEY, new Date().toISOString());
+    }
     dispatchSyncEvent('pull', { count });
     return { count };
   } catch (err) {
