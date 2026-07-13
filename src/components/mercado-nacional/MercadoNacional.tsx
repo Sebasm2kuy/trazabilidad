@@ -76,10 +76,14 @@ const OPPORTUNITY_COLOR = '#f59e0b'; // amber — opportunities
 function isLogisticsEd(ed: string): boolean {
   if (!ed) return true;
   const e = ed.trim();
+  const upper = e.toUpperCase();
   if (e === 'Puerto de Montevideo') return true;
   if (e.startsWith('Aeropuerto')) return true;
   if (e.startsWith('P. F.')) return true;
   if (e === 'Puerto de la Paloma') return true;
+  // CALIRAL es un depósito/frigorífico (la empresa desde donde se exporta),
+  // no un cliente. No debe aparecer en el listado de clientes.
+  if (upper.includes('CALIRAL')) return true;
   return false;
 }
 
