@@ -511,13 +511,17 @@ export function computeCompetitorRanking(
   // Usar byDeposito (ed) en vez de byCertificador (cf) — los competidores
   // de CALIRAL son OTROS depósitos, no certificadores puros.
   // Filtrar: solo establecimientos que recibieron mercadería como depósito.
-  // Excluir al propio cliente (NIREA/San Jacinto) y nombres vacíos.
+  // Excluir al propio cliente (NIREA/San Jacinto), a CALIRAL (es el actor
+  // que estamos analizando, no un competidor de sí mismo) y nombres vacíos.
   const competitors: CompetitorInfo[] = result.byDeposito
     .filter(c => c.label && c.label !== '—')
     .filter(c => {
       const upper = c.label.toUpperCase();
       // Excluir al propio cliente (autogestión)
-      return !upper.includes('NIREA') && !upper.includes('SAN JACINTO');
+      if (upper.includes('NIREA') || upper.includes('SAN JACINTO')) return false;
+      // Excluir a CALIRAL — no puede ser competidor de sí mismo
+      if (upper.includes('CALIRAL')) return false;
+      return true;
     })
     .map(c => {
       const isCaliral = c.label.toUpperCase().includes('CALIRAL');
