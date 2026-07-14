@@ -492,14 +492,7 @@ export function NireaSanJacinto() {
           )}
 
           {view === 'certificadores' && (
-            <BreakdownTable
-              title="Certificadores utilizados"
-              rows={result.byCertificador}
-              fmt={fmt}
-              fmtT={fmtT}
-              fmtPct={fmtPct}
-              highlightCaliral
-            />
+            <CertificadorChart rows={result.byCertificador} totalPn={result.totalClientePn} clienteName={NIREA_NAME} fmt={fmt} fmtT={fmtT} />
           )}
 
           {view === 'inteligencia' && intelligence && (
@@ -600,6 +593,163 @@ function BreakdownTable({ title, rows, fmt, fmtT, fmtPct, highlightEmpty, emptyL
           </div>
         </Card>
       )}
+    </div>
+  );
+}
+
+// ============================================================
+// CertificadorChart — Gráfico de certificadores con share real
+// ------------------------------------------------------------
+// Muestra: "San Jacinto exportó X toneladas" y barras con
+// cuánto le certificó cada uno (Caliral, Arbiza, autogestión, etc.)
+// ============================================================
+
+function CertificadorChart({ rows, totalPn, clienteName, fmt, fmtT }: {
+  rows: { label: string; totalPn: number; caliralPn: number; captureIndex: number; registros: number }[];
+  totalPn: number;
+  clienteName: string;
+  fmt: (n: number) => string;
+  fmtT: (n: number) => string;
+}) {
+  const sorted = [...rows].sort((a, b) => b.totalPn - a.totalPn);
+  const maxPn = Math.max(...sorted.map(r => r.totalPn), 1);
+
+  // Colores por tipo de certificador
+  const getBarColor = (label: string): string => {
+    const upper = label.toUpperCase();
+    if (upper.includes('CALIRAL')) return 'bg-violet-500';
+    if (upper.includes('NIREA') || upper.includes('SAN JACINTO')) return 'bg-blue-500';
+    if (upper.includes('ARBIZA')) return 'bg-amber-500';
+    return 'bg-slate-400';
+  };
+
+  const getLabel = (label: string): string => {
+    const upper = label.toUpperCase();
+    if (upper.includes('CALIRAL')) return 'CALIRAL S.A.';
+    if (upper.includes('NIREA') || upper.includes('SAN JACINTO')) return `${clienteName} (autogestión)`;
+    return label;
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Total exportado */}
+      <Card className="p-4 bg-gradient-to-br from-violet-50 to-blue-50 dark:from-violet-950/30 dark:to-blue-950/30 border-violet-200 dark:border-violet-900">
+        <p className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold">
+          Total exportado por {clienteName}
+        </p>
+        <div className="flex items-baseline gap-3 mt-1">
+          <p className="text-3xl font-bold text-violet-700 dark:text-violet-300 tabular-nums">
+            {fmtT(totalPn)}
+          </p>
+          <p className="text-sm text-slate-500">
+            {fmt(sorted.reduce((s, r) => s + r.registros, 0))} registros · {sorted.length} certificadores
+          </p>
+        </div>
+      </Card>
+
+      {/* Barras por certificador */}
+      <Card className="overflow-hidden">
+        <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-900">
+          <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+            ¿Quién certificó las exportaciones?
+          </h3>
+          <p className="text-[10px] text-slate-500 mt-0.5">
+            Cada barra muestra cuánto certificó cada organismo del total exportado
+          </p>
+        </div>
+        <div className="divide-y divide-slate-100 dark:divide-slate-900">
+          {sorted.map(r => {
+            const sharePct = totalPn > 0 ? (r.totalPn / totalPn) * 100 : 0;
+            const barWidth = (r.totalPn / maxPn) * 100;
+            const isCaliral = r.label.toUpperCase().includes('CALIRAL');
+            const isSelf = r.label.toUpperCase().includes('NIREA') || r.label.toUpperCase().includes('SAN JACINTO');
+            const displayLabel = getLabel(r.label);
+
+            return (
+              <div key={r.label} className={cn(
+                'px-4 py-3 transition-colors',
+                isCaliral && 'bg-violet-50/50 dark:bg-violet-950/20',
+              )}>
+                <div className="flex items-center gap-3 mb-1.5">
+                  <span className="text-sm font-medium text-slate-800 dark:text-slate-100 flex-1 truncate">
+                    {displayLabel}
+                    {isCaliral && <Badge variant="secondary" className="ml-2 text-[9px]">CALIRAL</Badge>}
+                    {isSelf && <Badge variant="outline" className="ml-2 text-[9px] text-blue-700">autogestión</Badge>}
+                  </span>
+                  <span className="text-xs text-slate-500 tabular-nums">{fmt(r.registros)} reg</span>
+                  <span className="text-sm font-semibold tabular-nums text-slate-700 dark:text-slate-200 w-24 text-right">
+                    {fmtT(r.totalPn)}
+                  </span>
+                  <span className={cn(
+                    'text-xs font-bold tabular-nums w-16 text-right',
+                    isCaliral ? 'text-violet-600' : isSelf ? 'text-blue-600' : 'text-slate-600',
+                  )}>
+                    {sharePct.toFixed(1)}%
+                  </span>
+                </div>
+                {/* Barra principal: share del total */}
+                <div className="h-3 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                  <div
+                    className={cn('h-full rounded-full transition-all', getBarColor(r.label))}
+                    style={{ width: `${barWidth}%` }}
+                  />
+                </div>
+                <p className="text-[10px] text-slate-400 mt-1">
+                  {isCaliral
+                    ? `CALIRAL certificó ${sharePct.toFixed(1)}% del total exportado por ${clienteName}`
+                    : isSelf
+                    ? `${clienteName} auto-certificó ${sharePct.toFixed(1)}% de sus exportaciones`
+                    : `${displayLabel} certificó ${sharePct.toFixed(1)}% del total`}
+                </p>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Barra de participación total (stacked) */}
+        <div className="px-4 py-3 border-t border-slate-100 dark:border-slate-900">
+          <p className="text-[10px] uppercase font-semibold text-slate-500 mb-2">
+            Participación de mercado (100%)
+          </p>
+          <div className="flex h-4 rounded-full overflow-hidden border border-slate-200 dark:border-slate-700">
+            {sorted.map(r => {
+              const sharePct = totalPn > 0 ? (r.totalPn / totalPn) * 100 : 0;
+              if (sharePct < 0.1) return null;
+              const upper = r.label.toUpperCase();
+              const color = upper.includes('CALIRAL') ? 'bg-violet-500'
+                          : upper.includes('NIREA') || upper.includes('SAN JACINTO') ? 'bg-blue-500'
+                          : upper.includes('ARBIZA') ? 'bg-amber-500'
+                          : 'bg-slate-400';
+              return (
+                <div
+                  key={r.label}
+                  className={cn('h-full transition-all', color)}
+                  style={{ width: `${sharePct}%` }}
+                  title={`${getLabel(r.label)}: ${sharePct.toFixed(1)}%`}
+                />
+              );
+            })}
+          </div>
+          <div className="flex flex-wrap gap-3 mt-2">
+            {sorted.filter(r => (totalPn > 0 ? (r.totalPn / totalPn) * 100 : 0) >= 0.1).map(r => {
+              const upper = r.label.toUpperCase();
+              const color = upper.includes('CALIRAL') ? 'bg-violet-500'
+                          : upper.includes('NIREA') || upper.includes('SAN JACINTO') ? 'bg-blue-500'
+                          : upper.includes('ARBIZA') ? 'bg-amber-500'
+                          : 'bg-slate-400';
+              const sharePct = totalPn > 0 ? (r.totalPn / totalPn) * 100 : 0;
+              return (
+                <div key={r.label} className="flex items-center gap-1">
+                  <div className={cn('w-2.5 h-2.5 rounded-sm', color)} />
+                  <span className="text-[10px] text-slate-600 dark:text-slate-300">
+                    {getLabel(r.label)} ({sharePct.toFixed(1)}%)
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </Card>
     </div>
   );
 }
