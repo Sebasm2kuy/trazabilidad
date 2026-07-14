@@ -72,18 +72,17 @@ const COMPETITOR_COLOR = '#3b82f6'; // blue — competitors
 const DEPOSIT_OTHER_COLOR = '#8b5cf6'; // violet — other deposits
 const OPPORTUNITY_COLOR = '#f59e0b'; // amber — opportunities
 
-/** Logistics nodes excluded from "real client" analysis */
+/** Logistics nodes excluded from "real client" analysis.
+ * NOTE: CALIRAL is excluded separately in clientAnalysis based on cf, not here.
+ * isLogisticsEd only filters actual logistics nodes (ports, airports).
+ */
 function isLogisticsEd(ed: string): boolean {
   if (!ed) return true;
   const e = ed.trim();
-  const upper = e.toUpperCase();
   if (e === 'Puerto de Montevideo') return true;
   if (e.startsWith('Aeropuerto')) return true;
   if (e.startsWith('P. F.')) return true;
   if (e === 'Puerto de la Paloma') return true;
-  // CALIRAL es un depósito/frigorífico (la empresa desde donde se exporta),
-  // no un cliente. No debe aparecer en el listado de clientes.
-  if (upper.includes('CALIRAL')) return true;
   return false;
 }
 
@@ -547,7 +546,7 @@ export default function MercadoNacional() {
       if (r.co) cortes[r.co] = (cortes[r.co] || 0) + (r.pn || 0);
       if (r.d) denoms[r.d] = (denoms[r.d] || 0) + 1;
       if (r.tm) tipos[r.tm] = (tipos[r.tm] || 0) + 1;
-      if (r.ed && !isLogisticsEd(r.ed)) clientes[r.ed] = (clientes[r.ed] || 0) + (r.pn || 0);
+      if (r.ed && !isLogisticsEd(r.ed) && !(isCaliralName(r.ed) && isCaliralName(r.cf || ''))) clientes[r.ed] = (clientes[r.ed] || 0) + (r.pn || 0);
       if (r.f) { const m = r.f.substring(0, 7); meses[m] = (meses[m] || 0) + (r.pn || 0); }
       totalCajas += r.e || 0;
       totalPn += r.pn || 0;
@@ -641,9 +640,14 @@ export default function MercadoNacional() {
     }
 
     // Company's clients (ed values in company's records, excluding logistics)
+    // Exclude CALIRAL as a "client" only when CALIRAL is the certificador (cf).
+    // When another company (ej: Pando) sends to CALIRAL as ed, that IS a real client.
     const companyClientMap: Record<string, number> = {};
     for (const r of companyRecords) {
       if (!r.ed || isLogisticsEd(r.ed)) continue;
+      // If CALIRAL is both the certificador (cf) AND the destino (ed),
+      // it's CALIRAL sending to itself — not a real client. Skip it.
+      if (isCaliralName(r.ed) && isCaliralName(r.cf || '')) continue;
       companyClientMap[r.ed] = (companyClientMap[r.ed] || 0) + (r.pn || 0);
     }
 
