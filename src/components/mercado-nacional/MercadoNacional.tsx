@@ -2162,7 +2162,6 @@ export default function MercadoNacional() {
                           <th className="px-3 py-2 font-semibold">#</th>
                           <th className="px-3 py-2 font-semibold">Empresa</th>
                           <th className="px-3 py-2 font-semibold text-right">Registros</th>
-                          <th className="px-3 py-2 font-semibold text-right hidden sm:table-cell">Cajas</th>
                           <th className="px-3 py-2 font-semibold text-right">Peso Neto</th>
                           <th className="px-3 py-2 font-semibold text-right hidden md:table-cell">Países</th>
                           <th className="px-3 py-2 font-semibold text-right hidden md:table-cell">Cortes</th>
@@ -2183,8 +2182,7 @@ export default function MercadoNacional() {
                                 {row.name}
                               </td>
                               <td className="px-3 py-2 text-right font-mono text-slate-500">{fmt(row.regs)}</td>
-                              <td className="px-3 py-2 text-right font-mono text-slate-500 hidden sm:table-cell">{fmt(row.cajas)}</td>
-                              <td className="px-3 py-2 text-right font-mono text-slate-700 dark:text-slate-300">{fmt(row.pn)}</td>
+                              <td className="px-3 py-2 text-right font-mono text-slate-700 dark:text-slate-300">{fmtKg(row.pn)}</td>
                               <td className="px-3 py-2 text-right font-mono text-slate-500 hidden md:table-cell">{row.paises}</td>
                               <td className="px-3 py-2 text-right font-mono text-slate-500 hidden md:table-cell">{row.cortes}</td>
                               <td className="px-3 py-2 text-right font-mono">
