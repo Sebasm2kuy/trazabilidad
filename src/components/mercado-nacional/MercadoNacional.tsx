@@ -640,15 +640,30 @@ export default function MercadoNacional() {
     }
 
     // Company's clients (ed values in company's records, excluding logistics)
-    // Exclude CALIRAL as a "client" only when CALIRAL is the certificador (cf).
-    // When another company (ej: Pando) sends to CALIRAL as ed, that IS a real client.
+    // For CALIRAL: clientes = productores que ENVÍAN a CALIRAL (campo p o cf),
+    // no el campo ed (que sería CALIRAL mismo como destino).
+    // Para otras empresas: clientes = ed (establecimiento destino).
     const companyClientMap: Record<string, number> = {};
     for (const r of companyRecords) {
-      if (!r.ed || isLogisticsEd(r.ed)) continue;
-      // If CALIRAL is both the certificador (cf) AND the destino (ed),
-      // it's CALIRAL sending to itself — not a real client. Skip it.
-      if (isCaliralName(r.ed) && isCaliralName(r.cf || '')) continue;
-      companyClientMap[r.ed] = (companyClientMap[r.ed] || 0) + (r.pn || 0);
+      if (isCaliralName(selectedCompany)) {
+        // Para CALIRAL: el "cliente" es quien envía la mercadería (productor/certificador)
+        // Si cf no es CALIRAL, el certificador es quien envía a CALIRAL
+        // Si cf es CALIRAL, el productor (p) es el cliente
+        let clientName = '';
+        if (!isCaliralName(r.cf || '')) {
+          clientName = r.cf || '';  // El certificador envía a CALIRAL
+        } else if (r.p && !isCaliralName(r.p)) {
+          clientName = r.p;  // El productor es el cliente
+        }
+        if (clientName && clientName !== '—') {
+          companyClientMap[clientName] = (companyClientMap[clientName] || 0) + (r.pn || 0);
+        }
+      } else {
+        // Para otras empresas: clientes = ed (establecimiento destino)
+        if (!r.ed || isLogisticsEd(r.ed)) continue;
+        if (isCaliralName(r.ed) && isCaliralName(r.cf || '')) continue;
+        companyClientMap[r.ed] = (companyClientMap[r.ed] || 0) + (r.pn || 0);
+      }
     }
 
     const companyClientNames = Object.keys(companyClientMap);
