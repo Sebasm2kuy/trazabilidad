@@ -342,8 +342,8 @@ export const ImportManager: IImportManager = {
     }
 
     if (tipo === 'exportaciones') {
-      const exports = (records as ExportacionRecord[]).map(r => ({
-        id: `exp_${r.nroTramite}`,
+      const exports = (records as ExportacionRecord[]).map((r, index) => ({
+        id: `exp_${r.nroTramite}_${index + 1}`,
         nroTramite: r.nroTramite,
         fechaTramite: r.fechaTramite,
         nroCote: r.nroCote,

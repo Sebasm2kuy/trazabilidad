@@ -16,6 +16,11 @@ import { parseCotePdf, coteToExpRecord } from '@/lib/parseCotePdf';
 import { parseExpoExcel } from '@/lib/parseExcelRegistro';
 import { schedulePush } from '@/lib/googleSheets'
 import { dataUrl } from '@/lib/staticData';
+import {
+  buildExportacionesAnalytics,
+  ensureUniqueExpRecordIds,
+  type ExportacionesAnalytics,
+} from '@/lib/exportaciones';
 import { toast } from 'sonner';
 import { fd, fdt, fmt } from '@/lib/utils';
 
@@ -52,14 +57,15 @@ function saveIngresos(data: Record<string, IngresoCote[]>) {
 
 const EXP_IMPORTED_KEY = 'trazabilidad_exp_imported';
 
-const expCache: { data: ExpRecord[]; loaded: boolean; analytics: Record<string, unknown> | null } = { data: [], loaded: false, analytics: null };
+const EMPTY_ANALYTICS: ExportacionesAnalytics = buildExportacionesAnalytics([]);
+
+const expCache: { data: ExpRecord[]; loaded: boolean } = { data: [], loaded: false };
 
 async function ensureExp() {
   // Always check if we have data, reload if empty
   if (!expCache.loaded || expCache.data.length === 0) {
     expCache.loaded = false;
     expCache.data = [];
-    expCache.analytics = { total: 0, pesoNetoTotal: 0, pesoBrutoTotal: 0, envasesTotal: 0, uniquePaisCount: 0, uniqueProductoCount: 0, uniqueDestinoCount: 0, lastDate: null, byPais: [], byProducto: [], byDestino: [] };
 
     // Try localStorage first (user imports)
     const imported = localStorage.getItem(EXP_IMPORTED_KEY);
@@ -96,6 +102,7 @@ async function ensureExp() {
       }
     } catch { /* ignore */ }
 
+    expCache.data = ensureUniqueExpRecordIds(expCache.data);
     expCache.loaded = true;
   }
 }
@@ -104,7 +111,6 @@ async function ensureExp() {
 function invalidateExpCache() {
   expCache.loaded = false;
   expCache.data = [];
-  expCache.analytics = null;
 }
 
 function loadEdits(): Record<string, Partial<ExpRecord>> {
@@ -246,6 +252,7 @@ export default function ExportacionesTable() {
   const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
   const [loading, setLoading] = useState(true);
   const [dataVersion, setDataVersion] = useState(0);
+  const [analytics, setAnalytics] = useState<ExportacionesAnalytics>(EMPTY_ANALYTICS);
   const [detailOpen, setDetailOpen] = useState(false);
   const selectedState = useState<ExpRecord | null>(null);
   const selected = selectedState[0];
@@ -300,16 +307,10 @@ export default function ExportacionesTable() {
           }
         }
       } catch { /* ignore */ }
-      const a = expCache.analytics!;
-      // Build options from analytics or from actual data
-      const optPaises = ((a.byPais as any[]) || []).map((p: any) => p.pais).filter(Boolean);
-      const optProductos = ((a.byProducto as any[]) || []).map((p: any) => p.producto).filter(Boolean);
-      const optDestinos = ((a.byDestino as any[]) || []).map((d: any) => d.destino).filter(Boolean);
-      // If analytics is empty, derive options from actual data
       setOptions({
-        paises: optPaises.length > 0 ? optPaises : [...new Set(expCache.data.map(s => s.paisDestino).filter(Boolean) as string[])].sort(),
-        productos: optProductos.length > 0 ? optProductos : [...new Set(expCache.data.map(s => s.denominacionMercaderia).filter(Boolean) as string[])].sort(),
-        destinos: optDestinos.length > 0 ? optDestinos : [...new Set(expCache.data.map(s => s.nombreEstablecimientoDestino).filter(Boolean) as string[])].sort(),
+        paises: [...new Set(expCache.data.map(s => s.paisDestino).filter(Boolean) as string[])].sort(),
+        productos: [...new Set(expCache.data.map(s => s.denominacionMercaderia).filter(Boolean) as string[])].sort(),
+        destinos: [...new Set(expCache.data.map(s => s.nombreEstablecimientoDestino).filter(Boolean) as string[])].sort(),
       });
       // Apply edits to cache
       expCache.data = applyEdits(expCache.data, edits);
@@ -370,6 +371,7 @@ export default function ExportacionesTable() {
       });
 
       const t = filtered.length;
+      setAnalytics(buildExportacionesAnalytics(filtered));
       setData(filtered.slice((page - 1) * EXP_PAGE_LIMIT, page * EXP_PAGE_LIMIT));
       setTotal(t);
     })();
@@ -599,23 +601,12 @@ export default function ExportacionesTable() {
       }
 
       const merged = [...expCache.data, ...trulyNew];
-      expCache.data = merged;
+      expCache.data = ensureUniqueExpRecordIds(merged);
       expCache.loaded = true;
-      expCache.analytics = {
-        total: merged.length,
-        pesoNetoTotal: merged.reduce((s, r) => s + (r.pesoNeto || 0), 0),
-        pesoBrutoTotal: merged.reduce((s, r) => s + (r.pesoBruto || 0), 0),
-        envasesTotal: merged.reduce((s, r) => s + (r.cantidadEnvases || 0), 0),
-        uniquePaisCount: new Set(merged.map(r => r.paisDestino).filter(Boolean)).size,
-        uniqueProductoCount: new Set(merged.map(r => r.denominacionMercaderia).filter(Boolean)).size,
-        uniqueDestinoCount: 0,
-        lastDate: merged.length > 0 ? merged[0].fechaTramite : null,
-        byPais: [], byProducto: [], byDestino: []
-      };
-      localStorage.setItem(EXP_IMPORTED_KEY, JSON.stringify(merged));
+      localStorage.setItem(EXP_IMPORTED_KEY, JSON.stringify(expCache.data));
       schedulePush();
       // Update COTEs
-      setCotes([...new Set(merged.map(s => s.nroCote).filter(Boolean) as string[])].sort());
+      setCotes([...new Set(expCache.data.map(s => s.nroCote).filter(Boolean) as string[])].sort());
 
       const dupCount = newRecords.length - trulyNew.length;
       const msg = dupCount > 0
@@ -623,8 +614,7 @@ export default function ExportacionesTable() {
         : `${trulyNew.length} registros nuevos agregados`;
       toast.success(msg);
       setPage(1);
-      setLoading(true);
-      setTimeout(() => setLoading(false), 100);
+      setDataVersion(v => v + 1);
     } catch (err) {
       toast.error('Error al importar: ' + (err as Error).message);
     } finally {
@@ -718,6 +708,7 @@ export default function ExportacionesTable() {
         cajas: newRecord.cantidadEnvases != null ? newRecord.cantidadEnvases : '',
       }]);
       setEditMode(true);
+      setDataVersion(v => v + 1);
     } catch (err) {
       console.error('Error parsing PDF:', err);
       setPdfError('Error al procesar el PDF. Verificá que sea un COTE válido.');
@@ -731,7 +722,7 @@ export default function ExportacionesTable() {
   const totalPages = Math.ceil(total / EXP_PAGE_LIMIT);
   const hasFilters = Boolean(Object.values(expFilters).some(Boolean));
   const filteredCotes = useMemo(() => coteSearch ? cotes.filter(c => c.toLowerCase().includes(coteSearch.toLowerCase())) : cotes, [cotes, coteSearch]);
-  const a = expCache.analytics;
+  const a = analytics;
 
   if (loading) return <div className="p-6 space-y-4"><h2 className="text-2xl font-bold text-slate-800">Exportaciones</h2><Skeleton className="h-96" /></div>;
 
