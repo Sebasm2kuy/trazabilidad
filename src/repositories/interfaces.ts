@@ -71,9 +71,9 @@ export interface AlertaRepository extends Repository<Alerta> {
   getByCategoria(categoria: Alerta['categoria']): Alerta[];
 }
 
-export interface EmpresaRepository extends Repository<Empresa> {}
-export interface ProductorRepository extends Repository<Productor> {}
-export interface CertificadoraRepository extends Repository<Certificadora> {}
-export interface DepositoRepository extends Repository<Deposito> {}
-export interface ClienteRepository extends Repository<Cliente> {}
-export interface PaisRepository extends Repository<Pais> {}
+export type EmpresaRepository = Repository<Empresa>;
+export type ProductorRepository = Repository<Productor>;
+export type CertificadoraRepository = Repository<Certificadora>;
+export type DepositoRepository = Repository<Deposito>;
+export type ClienteRepository = Repository<Cliente>;
+export type PaisRepository = Repository<Pais>;
