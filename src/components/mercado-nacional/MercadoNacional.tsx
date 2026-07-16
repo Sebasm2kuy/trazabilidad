@@ -629,54 +629,55 @@ export default function MercadoNacional() {
   const clientAnalysis = useMemo(() => {
     if (!filteredRecords.length) return { topClients: [], exclusive: [], shared: [] };
 
-    // Map: ed -> Set of certifiers that ship there
-    const edCertifiers: Record<string, Set<string>> = {};
-    const edPn: Record<string, number> = {};
+    const isCaliral = isCaliralName(selectedCompany);
+
+    // Helper: extraer el nombre del "cliente" de un registro.
+    // Para CALIRAL: el cliente es quien envía la mercadería (cf si no es CALIRAL, sino p).
+    // Para otras empresas: el cliente es ed (establecimiento destino).
+    const getClientName = (r: MovRecord): string => {
+      if (isCaliral) {
+        if (!isCaliralName(r.cf || '') && r.cf) return r.cf;
+        if (r.p && !isCaliralName(r.p)) return r.p;
+        return '';
+      }
+      if (!r.ed || isLogisticsEd(r.ed)) return '';
+      if (isCaliralName(r.ed) && isCaliralName(r.cf || '')) return '';
+      return r.ed;
+    };
+
+    // Map: clientName -> Set of certifiers that also work with that client
+    const clientCertifiers: Record<string, Set<string>> = {};
     for (const r of filteredRecords) {
-      if (!r.ed || isLogisticsEd(r.ed)) continue;
-      if (!edCertifiers[r.ed]) { edCertifiers[r.ed] = new Set(); edPn[r.ed] = 0; }
-      if (r.cf) edCertifiers[r.ed].add(r.cf);
-      edPn[r.ed] += r.pn || 0;
+      const name = getClientName(r);
+      if (!name) continue;
+      if (!clientCertifiers[name]) clientCertifiers[name] = new Set();
+      if (r.cf) clientCertifiers[name].add(r.cf);
     }
 
-    // Company's clients (ed values in company's records, excluding logistics)
-    // For CALIRAL: clientes = productores que ENVÍAN a CALIRAL (campo p o cf),
-    // no el campo ed (que sería CALIRAL mismo como destino).
-    // Para otras empresas: clientes = ed (establecimiento destino).
+    // Company's clients: count records AND sum pn per client
     const companyClientMap: Record<string, number> = {};
+    const companyClientCount: Record<string, number> = {};
     for (const r of companyRecords) {
-      if (isCaliralName(selectedCompany)) {
-        // Para CALIRAL: el "cliente" es quien envía la mercadería (productor/certificador)
-        // Si cf no es CALIRAL, el certificador es quien envía a CALIRAL
-        // Si cf es CALIRAL, el productor (p) es el cliente
-        let clientName = '';
-        if (!isCaliralName(r.cf || '')) {
-          clientName = r.cf || '';  // El certificador envía a CALIRAL
-        } else if (r.p && !isCaliralName(r.p)) {
-          clientName = r.p;  // El productor es el cliente
-        }
-        if (clientName && clientName !== '—') {
-          companyClientMap[clientName] = (companyClientMap[clientName] || 0) + (r.pn || 0);
-        }
-      } else {
-        // Para otras empresas: clientes = ed (establecimiento destino)
-        if (!r.ed || isLogisticsEd(r.ed)) continue;
-        if (isCaliralName(r.ed) && isCaliralName(r.cf || '')) continue;
-        companyClientMap[r.ed] = (companyClientMap[r.ed] || 0) + (r.pn || 0);
-      }
+      const name = getClientName(r);
+      if (!name || name === '—') continue;
+      companyClientMap[name] = (companyClientMap[name] || 0) + (r.pn || 0);
+      companyClientCount[name] = (companyClientCount[name] || 0) + 1;
     }
 
     const companyClientNames = Object.keys(companyClientMap);
-    const exclusive: { name: string; pn: number }[] = [];
-    const shared: { name: string; pn: number; competitors: number }[] = [];
+    const exclusive: { name: string; pn: number; count: number }[] = [];
+    const shared: { name: string; pn: number; competitors: number; count: number }[] = [];
 
     for (const name of companyClientNames) {
-      const certifiers = edCertifiers[name] || new Set();
+      const certifiers = clientCertifiers[name] || new Set();
       const pn = companyClientMap[name];
-      if (certifiers.size <= 1) {
-        exclusive.push({ name, pn });
+      const count = companyClientCount[name] || 0;
+      // Exclusivo = solo CALIRAL (o la empresa seleccionada) certifica este cliente
+      const otherCertifiers = Array.from(certifiers).filter(c => !isCaliralName(c) && c !== selectedCompany);
+      if (otherCertifiers.length === 0) {
+        exclusive.push({ name, pn, count });
       } else {
-        shared.push({ name, pn, competitors: certifiers.size });
+        shared.push({ name, pn, competitors: otherCertifiers.length + 1, count });
       }
     }
 
@@ -688,7 +689,7 @@ export default function MercadoNacional() {
       .sort((a, b) => b.pn - a.pn);
 
     return { topClients, exclusive, shared };
-  }, [filteredRecords, companyRecords]);
+  }, [filteredRecords, companyRecords, selectedCompany]);
 
   // ============================================================
   // COMPUTATION: corte × pais heatmap (selected company)
@@ -2298,6 +2299,7 @@ export default function MercadoNacional() {
                         {clientAnalysis.exclusive.map(c => (
                           <div key={c.name} className="flex items-center justify-between gap-2 py-1.5 px-2 rounded hover:bg-emerald-50 dark:hover:bg-emerald-900/20">
                             <span className="text-xs text-slate-700 dark:text-slate-300 flex-1 truncate" title={c.name}>{c.name}</span>
+                            <Badge variant="outline" className="text-[9px] border-emerald-300 text-emerald-700 dark:text-emerald-400">{c.count} cert.</Badge>
                             <Badge variant="outline" className="text-[9px] border-emerald-300 text-emerald-700 dark:text-emerald-400">Exclusivo</Badge>
                             <span className="text-xs font-mono text-slate-500 w-20 text-right">{fmtKg(c.pn)}</span>
                           </div>
@@ -2319,7 +2321,8 @@ export default function MercadoNacional() {
                         {clientAnalysis.shared.map(c => (
                           <div key={c.name} className="flex items-center justify-between gap-2 py-1.5 px-2 rounded hover:bg-blue-50 dark:hover:bg-blue-900/20">
                             <span className="text-xs text-slate-700 dark:text-slate-300 flex-1 truncate" title={c.name}>{c.name}</span>
-                            <Badge variant="outline" className="text-[9px] border-blue-300 text-blue-700 dark:text-blue-400">{c.competitors} cert.</Badge>
+                            <Badge variant="outline" className="text-[9px] border-emerald-300 text-emerald-700 dark:text-emerald-400">{c.count} cert.</Badge>
+                            <Badge variant="outline" className="text-[9px] border-blue-300 text-blue-700 dark:text-blue-400">{c.competitors} certificadores</Badge>
                             <span className="text-xs font-mono text-slate-500 w-20 text-right">{fmtKg(c.pn)}</span>
                           </div>
                         ))}
