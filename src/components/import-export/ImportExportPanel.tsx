@@ -13,7 +13,7 @@ interface ImportedBatch {
   name: string;
   date: string;
   count: number;
-  tipo: 'ingreso' | 'exportacion';
+  tipo: 'ingreso' | 'exportacion' | 'mixto';
   data: Shipment[];
 }
 
@@ -24,6 +24,17 @@ function loadBatches(): ImportedBatch[] {
 }
 function saveBatches(batches: ImportedBatch[]) {
   writeStorageJson(BATCHES_KEY, batches);
+}
+
+function removeBatchCopiesFromLegacyStorage(batches: ImportedBatch[]) {
+  const recordIds = new Set(batches.flatMap(batch => batch.data.map(record => record.id)));
+  if (recordIds.size === 0) return;
+
+  for (const key of [STORAGE_KEYS.depImported, STORAGE_KEYS.expImported]) {
+    const records = readStorageJson<Shipment[]>(key, []);
+    const remaining = records.filter(record => !recordIds.has(record.id));
+    if (remaining.length !== records.length) writeStorageJson(key, remaining);
+  }
 }
 
 function mapRowToShipment(row: Record<string, unknown>, tipo: 'ingreso' | 'exportacion', idx: number): Shipment | null {
@@ -65,6 +76,12 @@ function mapRowToShipment(row: Record<string, unknown>, tipo: 'ingreso' | 'expor
   };
 }
 
+function detectRowType(row: Record<string, unknown>): 'ingreso' | 'exportacion' {
+  const pais = row['País'] || row['Pais'] || row['paisDestino'] || row['pais'];
+  const destino = row['Destino'] || row['nombreEstablecimientoDestino'] || row['destino'];
+  return pais && destino ? 'exportacion' : 'ingreso';
+}
+
 export default function ImportExportPanel() {
   const [batches, setBatches] = useState<ImportedBatch[]>(() => loadBatches());
   const [importing, setImporting] = useState(false);
@@ -91,18 +108,18 @@ export default function ImportExportPanel() {
         return;
       }
 
-      // Auto-detect type from data
-      const firstRow = rows[0];
-      const hasPais = firstRow['País'] || firstRow['paisDestino'] || firstRow['Pais'];
-      const hasDestino = firstRow['Destino'] || firstRow['nombreEstablecimientoDestino'];
-      const tipo: 'ingreso' | 'exportacion' = (hasPais && hasDestino) ? 'exportacion' : 'ingreso';
-
       const mapped: Shipment[] = [];
       let fail = 0;
       rows.forEach((row, idx) => {
-        const s = mapRowToShipment(row, tipo, idx);
+        const s = mapRowToShipment(row, detectRowType(row), idx);
         if (s) mapped.push(s); else fail++;
       });
+
+      const hasIngresos = mapped.some(record => record.tipo === 'INGRESO');
+      const hasExportaciones = mapped.some(record => record.tipo === 'EXPORTACION');
+      const tipo: ImportedBatch['tipo'] = hasIngresos && hasExportaciones
+        ? 'mixto'
+        : hasExportaciones ? 'exportacion' : 'ingreso';
 
       const batch: ImportedBatch = {
         id: `batch-${Date.now()}`,
@@ -113,22 +130,9 @@ export default function ImportExportPanel() {
         data: mapped,
       };
 
-      const updated = [batch, ...batches];
+      const updated = [batch, ...loadBatches()];
       setBatches(updated);
       saveBatches(updated);
-
-      // ALSO write to the main table keys so data appears in Depositos/Exportaciones tabs
-      if (tipo === 'ingreso') {
-        try {
-          const existing = readStorageJson<Shipment[]>(STORAGE_KEYS.depImported, []);
-          writeStorageJson(STORAGE_KEYS.depImported, [...mapped, ...existing]);
-        } catch { writeStorageJson(STORAGE_KEYS.depImported, mapped); }
-      } else {
-        try {
-          const existing = readStorageJson<Shipment[]>(STORAGE_KEYS.expImported, []);
-          writeStorageJson(STORAGE_KEYS.expImported, [...mapped, ...existing]);
-        } catch { writeStorageJson(STORAGE_KEYS.expImported, mapped); }
-      }
 
       schedulePush();
       setLastResult({ ok: mapped.length, fail, batchId: batch.id });
@@ -141,13 +145,16 @@ export default function ImportExportPanel() {
   };
 
   const deleteBatch = (id: string) => {
-    const updated = batches.filter(b => b.id !== id);
+    const current = loadBatches();
+    removeBatchCopiesFromLegacyStorage(current.filter(batch => batch.id === id));
+    const updated = current.filter(batch => batch.id !== id);
     setBatches(updated);
     saveBatches(updated);
     if (previewBatch?.id === id) setPreviewBatch(null);
   };
 
   const clearAll = () => {
+    removeBatchCopiesFromLegacyStorage(loadBatches());
     setBatches([]);
     saveBatches([]);
     setPreviewBatch(null);
@@ -290,8 +297,8 @@ export default function ImportExportPanel() {
                     <tr key={b.id} className="border-b hover:bg-slate-50">
                       <td className="px-3 py-2 text-xs font-medium">{b.name}</td>
                       <td className="px-3 py-2 text-xs">
-                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${b.tipo === 'ingreso' ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700'}`}>
-                          {b.tipo === 'ingreso' ? 'Ingreso' : 'Exportación'}
+                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${b.tipo === 'ingreso' ? 'bg-emerald-100 text-emerald-700' : b.tipo === 'exportacion' ? 'bg-blue-100 text-blue-700' : 'bg-violet-100 text-violet-700'}`}>
+                          {b.tipo === 'ingreso' ? 'Ingreso' : b.tipo === 'exportacion' ? 'Exportación' : 'Mixto'}
                         </span>
                       </td>
                       <td className="px-3 py-2 text-xs">{new Date(b.date).toLocaleString('es-UY')}</td>
