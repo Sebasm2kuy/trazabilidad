@@ -11,28 +11,8 @@ export interface WorkbookPreview {
 
 const ALIASES: Record<string, string> = {
   numero_tramite: 'procedureNumber', fecha_del_tramite: 'procedureDate', numero_de_cote: 'cote',
-  nombre_medico_veterinario: 'veterinarianName', nombre_del_establecimiento_certificador: 'certifierName',
-  nombre_establecimiento_productor: 'originName', numero_establecimiento_productor: 'originNumber',
-  fecha_emitido_cote: 'coteIssuedAt', temperatura_c: 'temperatureC', tipo_de_transporte: 'transportType',
-  contenedor_serie_y_numero: 'containerNumber', matricula_avion: 'aircraftRegistration', matricula_camion: 'truckRegistration',
-  precinto_1: 'seal1', precinto_2: 'seal2', precinto_3: 'seal3', precinto_4: 'seal4',
-  precinto_agencia: 'agencySeal', guia_de_i_n_a_c: 'inacGuide', nombre_establecimiento_destino: 'destinationName',
-  tipo_de_movimiento: 'movementType', observaciones: 'observations', corresponde_abrir_contenedor: 'openContainer',
-  pais_de_destino: 'destinationCountry', validez_de_la_mercaderia: 'goodsValidity',
-  recepcion_servicio_de_inspeccion_veterinaria_de: 'receptionService', recibida_fecha_hora: 'receivedAt',
-  recibida_temperatura_c: 'receivedTemperature', recepcion_obseraciones: 'receptionObservations',
-  recepcion_usuario: 'receptionUser', la_inspeccion_exterior_es_conforme: 'exteriorInspectionOk',
-  contenedor_serie_y_numero_de_inspeccion: 'inspectionContainer', avion_matricula_de_inspeccion: 'inspectionAircraft',
-  camion_matricula_de_inspeccion: 'inspectionTruck', insp_precinto_1: 'inspectionSeal1',
-  insp_precinto_2: 'inspectionSeal2', insp_precinto_3: 'inspectionSeal3', insp_precinto_4: 'inspectionSeal4',
-  observaciones_insp_exterior: 'inspectionObservations',
   denominacion_de_mercaderia: 'product', corte: 'cut', pallets: 'pallets', cantidad_de_envases: 'packages',
   peso_bruto: 'grossWeight', peso_neto: 'netWeight', id_linea: 'sourceLineId', baja: 'deleted',
-  codigo_envase: 'packageCode', numero_certificado_sanitario: 'sanitaryCertificate', shipping: 'shipping',
-  lote_usa_canada: 'lotUsaCanada', lotes_china: 'lotsChina', fecha_inicio_faena: 'slaughterStart',
-  fecha_fin_faena: 'slaughterEnd', fecha_inicio_produccion: 'productionStart',
-  fecha_fin_de_produccion: 'productionEnd', fecha_inicio_congelacion: 'freezingStart',
-  fecha_fin_congelacion: 'freezingEnd', papel_de_seguridad: 'securityPaper', proceso: 'process',
   fec_com: 'commissionDate', fec_ent: 'deliveryDate', contenedor: 'containerNumber', cajas: 'packages',
   kilos: 'kilos', contenido: 'productDescription', numero_lote: 'lot', dua: 'dua', f_venc: 'expirationDate', l_e: 'entryExit',
 };
@@ -64,7 +44,7 @@ export function analyzeRows(rows: unknown[][], kind: ImportKind, sheetName = 'Sh
     if (!row?.some(value => preserveCode(value))) continue;
     if (/^(cliente|fecha|fecha hasta|reporte):?$/i.test(preserveCode(row[0]))) continue;
     if (/^(totales?|subtotal)/i.test(preserveCode(row[0])) || row.some(value => /^(totales?|subtotal):?$/i.test(preserveCode(value)))) continue;
-    if (normalizeHeader(row[0]) === normalizeHeader(header[0])) continue;
+    if (row.some(value => normalizeHeader(value) === normalizeHeader(header[0]))) continue;
     const reasons: string[] = [];
     for (const field of REQUIRED[kind]) if (!preserveCode(get(field))) reasons.push(`${field}: requerido`);
     for (const field of kind === 'STOCK' ? ['pallets', 'packages', 'kilos'] : ['pallets', 'packages', 'grossWeight', 'netWeight']) {
