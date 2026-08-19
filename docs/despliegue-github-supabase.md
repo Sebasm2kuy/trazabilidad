@@ -6,41 +6,7 @@ GitHub Pages publica únicamente la exportación estática de Next.js. El navega
 
 ## 1. Crear el esquema
 
-En un entorno de prueba de Supabase, abrir **SQL Editor** y crear una consulta nueva.
-
-> **Importante:** `supabase/migrations/20260819000000_initial_traceability.sql` es la ruta de un archivo del repositorio, **no es una sentencia SQL**. No hay que escribir ni ejecutar esa ruta en el editor. Si se ejecuta solo el nombre del archivo, PostgreSQL responde `ERROR 42601: syntax error at or near "supabase"`.
-
-Para aplicarla manualmente:
-
-1. Abrir [`supabase/migrations/20260819000000_initial_traceability.sql`](../supabase/migrations/20260819000000_initial_traceability.sql) en GitHub.
-2. Pulsar **Raw** o abrir la vista completa del archivo.
-3. Copiar **todo el contenido**, desde la primera línea que comienza con `-- Supabase/PostgreSQL foundation` hasta la última línea que termina en `Edge Functions.`.
-4. Pegar ese contenido en la consulta nueva de Supabase SQL Editor.
-5. Pulsar **Run** una sola vez y comprobar que aparece `Success. No rows returned`.
-
-No pegar ninguno de estos textos en SQL Editor:
-
-```text
-supabase/migrations/20260819000000_initial_traceability.sql
-../supabase/migrations/20260819000000_initial_traceability.sql
-https://github.com/.../20260819000000_initial_traceability.sql
-```
-
-Después de ejecutarla, abrir otra consulta y verificar el resultado con SQL real:
-
-```sql
-select table_name
-from information_schema.tables
-where table_schema = 'public'
-  and table_name in (
-    'profiles', 'import_runs', 'inbound_movements', 'inbound_lines',
-    'outbound_movements', 'outbound_lines', 'stock_snapshots',
-    'stock_lines', 'audit_events'
-  )
-order by table_name;
-```
-
-La comprobación debe devolver nueve filas. Revisar además que se hayan creado índices, tipos, triggers y políticas RLS. Para producción, repetir mediante un flujo de migraciones versionado; no editar las tablas manualmente después.
+En un entorno de prueba de Supabase, abrir **SQL Editor**, copiar y ejecutar `supabase/migrations/20260819000000_initial_traceability.sql`. Revisar que se hayan creado las tablas, índices, tipos, triggers y políticas RLS. Repetir mediante un flujo de migraciones versionado para producción; no editar las tablas manualmente después.
 
 La migración permite a cada usuario autenticado leer solamente sus registros. No concede escrituras operativas al navegador: eso es intencional hasta implementar la Edge Function transaccional.
 
