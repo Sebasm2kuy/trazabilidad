@@ -19,6 +19,7 @@ import ErrorBoundary from '@/components/ErrorBoundary';
 import { Login } from '@/components/auth/Login';
 import { ClientesEstrategicos } from '@/components/clientes-estrategicos/ClientesEstrategicos';
 import { getSession, onAuthChange, getAllowedTabs, type AuthUser } from '@/lib/auth';
+import { archiveLegacyOperationalStorage } from '@/lib/legacyStorage';
 
 export default function Home() {
   const { activeTab, setActiveTab } = useAppStore();
@@ -39,6 +40,10 @@ export default function Home() {
       unsub();
     };
   }, []);
+
+  useEffect(() => {
+    if (user) archiveLegacyOperationalStorage();
+  }, [user]);
 
   // Si el rol no tiene acceso a la tab activa, forzar a la primera permitida
   useEffect(() => {
