@@ -26,11 +26,18 @@ export default function Home() {
   const [authChecked, setAuthChecked] = useState(false);
 
   useEffect(() => {
-    const s = getSession();
-    setUser(s);
-    setAuthChecked(true);
-    const unsub = onAuthChange(() => setUser(getSession()));
-    return unsub;
+    let mounted = true;
+    void getSession()
+      .then(session => { if (mounted) setUser(session); })
+      .catch(() => { if (mounted) setUser(null); })
+      .finally(() => { if (mounted) setAuthChecked(true); });
+    const unsub = onAuthChange(session => {
+      if (mounted) setUser(session);
+    });
+    return () => {
+      mounted = false;
+      unsub();
+    };
   }, []);
 
   // Si el rol no tiene acceso a la tab activa, forzar a la primera permitida

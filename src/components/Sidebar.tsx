@@ -110,7 +110,7 @@ function SidebarContent({ onNavigate, user }: SidebarContentProps) {
 
   const handleLogout = () => {
     if (confirm('¿Cerrar sesión?')) {
-      logout();
+      void logout();
     }
   };
 
