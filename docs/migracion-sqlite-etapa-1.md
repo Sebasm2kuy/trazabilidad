@@ -1,7 +1,5 @@
 # Migración local a SQLite — etapa 1
 
-> **Estado:** documento histórico de la primera etapa. La decisión vigente es desplegar la interfaz estática en GitHub Pages y utilizar Supabase; consultar `docs/despliegue-github-supabase.md`. El modelo y el análisis de Excel de este documento siguen siendo referencia para la migración PostgreSQL.
-
 ## Alcance y regla de seguridad
 
 Esta primera etapa **no reemplaza todavía** los repositorios ni las pantallas existentes: establece el modelo normalizado, el analizador previo a una importación y sus validadores. La base operativa debe crearse vacía; `db/custom.db` no se usó como fuente histórica y los tres Excel se inspeccionaron en modo lectura, sin reescribirlos.
