@@ -4,9 +4,9 @@
 // Login — Pantalla de login con username + password
 // ------------------------------------------------------------
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Building2, Lock, User as UserIcon, Eye, EyeOff, Loader2 } from 'lucide-react';
-import { login, getSession, type AuthUser } from '@/lib/auth';
+import { login, type AuthUser } from '@/lib/auth';
 
 interface LoginProps {
   onLogin: (user: AuthUser) => void;
@@ -19,25 +19,17 @@ export function Login({ onLogin }: LoginProps) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    const s = getSession();
-    if (s) onLogin(s);
-  }, [onLogin]);
-
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setLoading(true);
 
-    setTimeout(() => {
-      const user = login(username, password);
-      if (user) {
-        onLogin(user);
-      } else {
-        setError('Usuario o contraseña incorrectos');
-        setLoading(false);
-      }
-    }, 350);
+    try {
+      onLogin(await login(username, password));
+    } catch (loginError) {
+      setError(loginError instanceof Error ? loginError.message : 'No se pudo iniciar sesión');
+      setLoading(false);
+    }
   };
 
   return (
@@ -60,15 +52,15 @@ export function Login({ onLogin }: LoginProps) {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-xs font-medium text-slate-300 mb-1.5 uppercase tracking-wide">
-                Usuario
+                Correo electrónico
               </label>
               <div className="relative">
                 <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
                 <input
-                  type="text"
+                  type="email"
                   value={username}
                   onChange={e => setUsername(e.target.value)}
-                  placeholder="comercial o supervisor"
+                  placeholder="usuario@empresa.com"
                   autoFocus
                   autoComplete="username"
                   className="w-full bg-slate-900/70 border border-slate-700 rounded-lg pl-10 pr-3 py-2.5 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 transition-colors"
