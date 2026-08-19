@@ -1,79 +1,57 @@
-// ============================================================
-// AUTH — Sistema simple de autenticación por roles
-// ------------------------------------------------------------
-// Dos usuarios hardcodeados:
-//   - comercial / comercial  → solo pestaña Clientes Estratégicos
-//   - supervisor / supervisor → acceso total
-//
-// La sesión se guarda en localStorage con expiración de 8 horas.
-// ============================================================
+import type { User } from '@supabase/supabase-js';
+import { getSupabaseBrowserClient } from '@/lib/supabase/client';
 
 export type UserRole = 'comercial' | 'supervisor';
 
 export interface AuthUser {
+  id: string;
   username: string;
-  role: UserRole;
-  loginAt: number;
-  expiresAt: number;
-}
-
-interface UserInfo {
-  username: string;
-  password: string;
   role: UserRole;
 }
 
-const USERS: UserInfo[] = [
-  { username: 'comercial', password: 'comercial', role: 'comercial' },
-  { username: 'supervisor', password: 'supervisor', role: 'supervisor' },
-];
+function validRole(value: unknown): UserRole {
+  return value === 'supervisor' ? 'supervisor' : 'comercial';
+}
 
-const SESSION_KEY = 'trazabilidad_auth_session';
-const SESSION_DURATION_MS = 8 * 60 * 60 * 1000; // 8 horas
+async function toAuthUser(user: User): Promise<AuthUser> {
+  const supabase = getSupabaseBrowserClient();
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('display_name, role')
+    .eq('id', user.id)
+    .single();
 
-export function login(username: string, password: string): AuthUser | null {
-  const user = USERS.find(
-    u => u.username === username.trim().toLowerCase() && u.password === password,
-  );
-  if (!user) return null;
+  if (error) throw new Error(`No se pudo leer el perfil: ${error.message}`);
 
-  const now = Date.now();
-  const session: AuthUser = {
-    username: user.username,
-    role: user.role,
-    loginAt: now,
-    expiresAt: now + SESSION_DURATION_MS,
+  return {
+    id: user.id,
+    username: data.display_name || user.email || 'usuario',
+    role: validRole(data.role),
   };
-  saveSession(session);
-  return session;
 }
 
-export function logout(): void {
-  if (typeof window === 'undefined') return;
-  localStorage.removeItem(SESSION_KEY);
-  window.dispatchEvent(new CustomEvent('trazabilidad-auth-change'));
-}
+export async function login(email: string, password: string): Promise<AuthUser> {
+  const { data, error } = await getSupabaseBrowserClient().auth.signInWithPassword({
+    email: email.trim(),
+    password,
+  });
 
-export function getSession(): AuthUser | null {
-  if (typeof window === 'undefined') return null;
-  try {
-    const raw = localStorage.getItem(SESSION_KEY);
-    if (!raw) return null;
-    const session = JSON.parse(raw) as AuthUser;
-    if (Date.now() >= session.expiresAt) {
-      localStorage.removeItem(SESSION_KEY);
-      return null;
-    }
-    return session;
-  } catch {
-    return null;
+  if (error || !data.user) {
+    throw new Error(error?.message || 'Usuario o contraseña incorrectos.');
   }
+
+  return toAuthUser(data.user);
 }
 
-function saveSession(session: AuthUser): void {
-  if (typeof window === 'undefined') return;
-  localStorage.setItem(SESSION_KEY, JSON.stringify(session));
-  window.dispatchEvent(new CustomEvent('trazabilidad-auth-change'));
+export async function logout(): Promise<void> {
+  const { error } = await getSupabaseBrowserClient().auth.signOut();
+  if (error) throw new Error(error.message);
+}
+
+export async function getSession(): Promise<AuthUser | null> {
+  const { data, error } = await getSupabaseBrowserClient().auth.getSession();
+  if (error) throw new Error(error.message);
+  return data.session?.user ? toAuthUser(data.session.user) : null;
 }
 
 export function getAllowedTabs(role: UserRole): string[] {
@@ -85,7 +63,6 @@ export function getAllowedTabs(role: UserRole): string[] {
       'analiticas', 'importar', 'nuevo', 'clientes-estrategicos',
     ];
   }
-  // comercial: solo Clientes Estratégicos
   return ['clientes-estrategicos'];
 }
 
@@ -93,8 +70,13 @@ export function getRoleLabel(role: UserRole): string {
   return role === 'supervisor' ? 'Supervisor' : 'Comercial';
 }
 
-export function onAuthChange(callback: () => void): () => void {
-  if (typeof window === 'undefined') return () => {};
-  window.addEventListener('trazabilidad-auth-change', callback);
-  return () => window.removeEventListener('trazabilidad-auth-change', callback);
+export function onAuthChange(callback: (user: AuthUser | null) => void): () => void {
+  const { data } = getSupabaseBrowserClient().auth.onAuthStateChange((_event, session) => {
+    if (!session?.user) {
+      callback(null);
+      return;
+    }
+    void toAuthUser(session.user).then(callback).catch(() => callback(null));
+  });
+  return () => data.subscription.unsubscribe();
 }
