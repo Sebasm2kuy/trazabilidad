@@ -19,6 +19,7 @@ import ErrorBoundary from '@/components/ErrorBoundary';
 import { Login } from '@/components/auth/Login';
 import { ClientesEstrategicos } from '@/components/clientes-estrategicos/ClientesEstrategicos';
 import { getSession, onAuthChange, getAllowedTabs, type AuthUser } from '@/lib/auth';
+import { archiveLegacyOperationalStorage } from '@/lib/legacyStorage';
 
 export default function Home() {
   const { activeTab, setActiveTab } = useAppStore();
@@ -26,12 +27,23 @@ export default function Home() {
   const [authChecked, setAuthChecked] = useState(false);
 
   useEffect(() => {
-    const s = getSession();
-    setUser(s);
-    setAuthChecked(true);
-    const unsub = onAuthChange(() => setUser(getSession()));
-    return unsub;
+    let mounted = true;
+    void getSession()
+      .then(session => { if (mounted) setUser(session); })
+      .catch(() => { if (mounted) setUser(null); })
+      .finally(() => { if (mounted) setAuthChecked(true); });
+    const unsub = onAuthChange(session => {
+      if (mounted) setUser(session);
+    });
+    return () => {
+      mounted = false;
+      unsub();
+    };
   }, []);
+
+  useEffect(() => {
+    if (user) archiveLegacyOperationalStorage();
+  }, [user]);
 
   // Si el rol no tiene acceso a la tab activa, forzar a la primera permitida
   useEffect(() => {
