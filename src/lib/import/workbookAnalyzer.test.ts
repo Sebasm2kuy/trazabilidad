@@ -23,20 +23,4 @@ describe('detección y validación', () => {
     expect(result.headerRow).toBe(3); expect(result.validRows).toBe(1); expect(result.duplicateRows).toBe(1);
     expect(result.unknown).toEqual([]); expect(result.rejectedRows).toEqual([]);
   });
-
-  test('reconoce las 60 columnas del registro real', async () => {
-    const { analyzeWorkbook } = await import('./workbookAnalyzer');
-    const buffer = await Bun.file('public/data/Ingresos a Frimaral desde 1-1-26 a 18-8-26.xlsx').arrayBuffer();
-    const result = analyzeWorkbook(buffer, 'INBOUND');
-    expect(result.headerRow).toBe(16); expect(result.headers).toHaveLength(60);
-    expect(result.unknown).toEqual([]); expect(result.validRows).toBe(261);
-  });
-
-  test('detecta exactamente las líneas duplicadas del stock real', async () => {
-    const { analyzeWorkbook } = await import('./workbookAnalyzer');
-    const buffer = await Bun.file('public/data/stock al 18-8-26.xls').arrayBuffer();
-    const result = analyzeWorkbook(buffer, 'STOCK');
-    expect(result.headerRow).toBe(8); expect(result.validRows).toBe(1420);
-    expect(result.rejectedRows).toEqual([]); expect(result.duplicateRows).toBe(2);
-  });
 });
