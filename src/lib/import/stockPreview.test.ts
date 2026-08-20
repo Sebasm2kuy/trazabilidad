@@ -15,7 +15,6 @@ describe('previewStockFile', () => {
     expect(preview.duplicateRows).toBe(2);
     expect(preview.rejectedRows).toHaveLength(0);
     expect(preview.lines.length).toBeLessThanOrEqual(25);
-    expect(preview.allLines).toHaveLength(1420);
     expect(preview.sourceHash).toHaveLength(64);
   });
 });

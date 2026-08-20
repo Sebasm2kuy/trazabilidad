@@ -36,7 +36,6 @@ export interface StockFilePreview {
   totalPackages: number;
   totalKilos: number;
   lines: StockPreviewLine[];
-  allLines: StockPreviewLine[];
 }
 
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
@@ -159,6 +158,5 @@ export async function previewStockFile(file: File): Promise<StockFilePreview> {
     totalPackages: lines.reduce((sum, line) => sum + line.packages, 0),
     totalKilos: lines.reduce((sum, line) => sum + line.kilos, 0),
     lines: lines.slice(0, 25),
-    allLines: lines,
   };
 }

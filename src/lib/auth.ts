@@ -56,12 +56,14 @@ export async function getSession(): Promise<AuthUser | null> {
 
 export function getAllowedTabs(role: UserRole): string[] {
   if (role === 'supervisor') {
-    // Only expose screens whose operational readers already use Supabase.
-    // The remaining legacy screens still bundle JSON/Excel data and must stay
-    // inaccessible until their repositories are migrated.
-    return ['dashboard', 'depositos', 'exportaciones', 'importar'];
+    return [
+      'dashboard', 'depositos', 'exportaciones',
+      'cruce-caliral', 'cruces-x-cote', 'mercado-nacional',
+      'trazabilidad-explorer', 'trazabilidad', 'comparativa',
+      'analiticas', 'clientes-estrategicos',
+    ];
   }
-  return ['dashboard'];
+  return ['clientes-estrategicos'];
 }
 
 export function getRoleLabel(role: UserRole): string {
