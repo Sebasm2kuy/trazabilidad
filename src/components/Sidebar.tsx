@@ -4,12 +4,11 @@ import { useState, useEffect, useCallback } from 'react';
 import { useAppStore } from '@/store/useAppStore';
 import {
   LayoutDashboard, Warehouse, Ship, ArrowLeftRight, Search, GitCompare,
-  BarChart3, Download, PlusCircle, Settings, Cloud, CloudOff, Menu, Globe,
+  BarChart3, Download, PlusCircle, Settings, Menu, Globe,
   Home, Briefcase, LogOut, User as UserIcon,
   type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { isConfigured, getLastSync } from '@/lib/googleSheets';
 import SettingsSheet from '@/components/SettingsSheet';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -67,8 +66,6 @@ interface SidebarContentProps {
 function SidebarContent({ onNavigate, user }: SidebarContentProps) {
   const { activeTab, setActiveTab, navigateAndFilter, search, setSearch } = useAppStore();
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [configured, setConfigured] = useState(false);
-  const [lastSync, setLastSync] = useState('');
   const [hoveredTab, setHoveredTab] = useState<string | null>(null);
   const [quickSearch, setQuickSearch] = useState('');
 
@@ -77,17 +74,6 @@ function SidebarContent({ onNavigate, user }: SidebarContentProps) {
     .map(s => ({ ...s, items: s.items.filter(i => allowedTabs.includes(i.id)) }))
     .filter(s => s.items.length > 0);
   const visibleTabs = visibleSections.flatMap(s => s.items);
-
-  useEffect(() => {
-    setConfigured(isConfigured());
-    setLastSync(getLastSync());
-    const handler = () => {
-      setConfigured(isConfigured());
-      setLastSync(getLastSync());
-    };
-    window.addEventListener('sheets-sync', handler);
-    return () => window.removeEventListener('sheets-sync', handler);
-  }, []);
 
   useEffect(() => {
     setQuickSearch(search);
@@ -110,7 +96,7 @@ function SidebarContent({ onNavigate, user }: SidebarContentProps) {
 
   const handleLogout = () => {
     if (confirm('¿Cerrar sesión?')) {
-      logout();
+      void logout();
     }
   };
 
@@ -141,14 +127,11 @@ function SidebarContent({ onNavigate, user }: SidebarContentProps) {
         {user.role === 'supervisor' && (
           <button
             onClick={() => setSettingsOpen(true)}
-            className={cn(
-              'p-2 rounded-lg transition-colors',
-              configured ? 'text-emerald-400 hover:bg-slate-800' : 'text-amber-400 hover:bg-slate-800'
-            )}
+            className="p-2 rounded-lg text-emerald-400 hover:bg-slate-800 transition-colors"
             title="Configuración"
             aria-label="Configuración"
           >
-            {configured ? <Cloud className="h-5 w-5" /> : <CloudOff className="h-5 w-5" />}
+            <Settings className="h-5 w-5" />
           </button>
         )}
       </div>
@@ -227,13 +210,6 @@ function SidebarContent({ onNavigate, user }: SidebarContentProps) {
       </nav>
 
       <div className="p-3 border-t border-slate-700 space-y-2">
-        {configured && lastSync && user.role === 'supervisor' && (
-          <p className="text-[10px] text-slate-500">
-            <Cloud className="h-3 w-3 inline mr-1" />
-            Sync: {new Date(lastSync).toLocaleString('es-UY')}
-          </p>
-        )}
-
         <div className="flex items-center gap-2 bg-slate-800/60 rounded-lg px-3 py-2">
           <div className="w-7 h-7 rounded-full bg-emerald-600 flex items-center justify-center shrink-0">
             <UserIcon className="h-4 w-4 text-white" />

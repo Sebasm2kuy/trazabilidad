@@ -7,55 +7,226 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model Shipment {
-  id                            String   @id @default(cuid())
-  nroTramite                    Int
-  fechaTramite                  DateTime
-  nroCote                       String
-  nombreMedicoVeterinario       String?
-  nombreEstablecimientoCertif   String?
-  nombreEstablecimientoProd     String?
-  nroEstablecimientoProd        Int?
-  fechaEmitidoCote              DateTime?
-  temperaturaC                  Float?
-  tipoTransporte                String?
-  contenedorSerieNro            String?
-  matriculaCamion               String?
-  precinto1                     String?
-  nombreEstablecimientoDestino  String
-  tipoMovimiento                String?
-  observaciones                 String?
-  paisDestino                   String
-  baja                          String?
-  idLinea                       Int?
-  codigoEnvase                  Int?
-  denominacionMercaderia        String
-  corte                         String
-  pallets                       Int?
-  cantidadEnvases               Int?
-  pesoBruto                     Float?
-  pesoNeto                      Float?
-  nroCertificadoSanitario       String?
-  shipping                      String?
-  loteUsaCanada                 String?
-  lotesChina                    String?
-  fechaInicioFaena              DateTime?
-  fechaFinFaena                 DateTime?
-  fechaInicioProduccion         DateTime?
-  fechaFinProduccion            DateTime?
-  fechaInicioCongelacion        DateTime?
-  fechaFinCongelacion           DateTime?
-  proceso                       String?
-  tipo                          String   @default("ingreso")
-  createdAt                     DateTime @default(now())
-  updatedAt                     DateTime @updatedAt
+// Every Excel operation is staged and audited here. Status values are strings
+// (PENDING, VALIDATED, COMMITTED, REJECTED, ROLLED_BACK) because SQLite has no enums.
+model ImportRun {
+  id             String   @id @default(cuid())
+  kind           String
+  status         String   @default("PENDING")
+  sourceName     String
+  sourceHash     String
+  sourceBytes    Int
+  sheetName      String?
+  headerRow      Int?
+  stockDate      DateTime?
+  startedAt      DateTime @default(now())
+  validatedAt    DateTime?
+  committedAt    DateTime?
+  rolledBackAt   DateTime?
+  validRows      Int      @default(0)
+  rejectedRows   Int      @default(0)
+  duplicateRows  Int      @default(0)
+  recognizedJson String?
+  unknownJson    String?
+  reportJson     String?
+  errorMessage   String?
+  inboundLines   InboundLine[]
+  outboundLines  OutboundLine[]
+  stockSnapshot  StockSnapshot?
+  auditEvents    AuditEvent[]
 
-  @@index([nroTramite])
-  @@index([fechaTramite])
-  @@index([nroCote])
-  @@index([nombreEstablecimientoDestino])
-  @@index([paisDestino])
-  @@index([denominacionMercaderia])
-  @@index([corte])
-  @@index([tipo])
+  @@unique([kind, sourceHash])
+  @@index([status, startedAt])
+}
+
+model InboundMovement {
+  id                    String   @id @default(cuid())
+  procedureNumber       String
+  procedureDate         DateTime
+  cote                   String
+  movementType          String?
+  originName             String?
+  originNumber           String?
+  certifierName          String?
+  veterinarianName       String?
+  coteIssuedAt           DateTime?
+  transportType          String?
+  truckRegistration      String?
+  containerNumber       String?
+  seal1                  String?
+  destinationName       String?
+  destinationCountry    String?
+  observations           String?
+  sourceDeleted          Boolean  @default(false)
+  deletedAt              DateTime?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+  lines                  InboundLine[]
+
+  @@unique([procedureNumber, cote])
+  @@index([cote])
+  @@index([procedureDate])
+  @@index([originName])
+}
+
+model InboundLine {
+  id                 String   @id @default(cuid())
+  movementId         String
+  importRunId        String
+  sourceRow          Int
+  sourceLineId       String
+  dedupKey           String
+  packageCode        String?
+  product            String
+  cut                String?
+  lotUsaCanada       String?
+  lotsChina          String?
+  pallets            Int?
+  packages           Int?
+  grossWeight        Decimal?
+  netWeight          Decimal?
+  slaughterStart     DateTime?
+  slaughterEnd       DateTime?
+  productionStart    DateTime?
+  productionEnd      DateTime?
+  freezingStart      DateTime?
+  freezingEnd        DateTime?
+  rawExtraJson       String?
+  createdAt          DateTime @default(now())
+  movement           InboundMovement @relation(fields: [movementId], references: [id])
+  importRun          ImportRun @relation(fields: [importRunId], references: [id])
+
+  @@unique([importRunId, dedupKey])
+  @@index([movementId, product, cut])
+  @@index([lotUsaCanada])
+}
+
+model OutboundMovement {
+  id                       String   @id @default(cuid())
+  procedureNumber          String
+  procedureDate            DateTime
+  cote                      String
+  movementType              String?
+  destinationCountry       String?
+  destinationName          String?
+  transportType            String?
+  truckRegistration        String?
+  containerNumber          String?
+  seal1                     String?
+  seal2                     String?
+  seal3                     String?
+  seal4                     String?
+  sanitaryCertificate      String?
+  receivedAt               DateTime?
+  receptionService         String?
+  receptionObservations    String?
+  receptionUser            String?
+  exteriorInspectionOk     Boolean?
+  inspectionObservations   String?
+  observations             String?
+  sourceDeleted            Boolean  @default(false)
+  deletedAt                 DateTime?
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+  lines                     OutboundLine[]
+
+  @@unique([procedureNumber, cote])
+  @@index([cote])
+  @@index([procedureDate])
+  @@index([destinationCountry, destinationName])
+}
+
+model OutboundLine {
+  id                 String   @id @default(cuid())
+  movementId         String
+  importRunId        String
+  sourceRow          Int
+  sourceLineId       String
+  dedupKey           String
+  packageCode        String?
+  product            String
+  cut                String?
+  lotUsaCanada       String?
+  lotsChina          String?
+  pallets            Int?
+  packages           Int?
+  grossWeight        Decimal?
+  netWeight          Decimal?
+  shipping           String?
+  securityPaper      String?
+  rawExtraJson       String?
+  createdAt          DateTime @default(now())
+  movement           OutboundMovement @relation(fields: [movementId], references: [id])
+  importRun          ImportRun @relation(fields: [importRunId], references: [id])
+
+  @@unique([importRunId, dedupKey])
+  @@index([movementId, product, cut])
+  @@index([lotUsaCanada])
+}
+
+model StockSnapshot {
+  id              String   @id @default(cuid())
+  importRunId     String   @unique
+  stockDate       DateTime
+  importedAt      DateTime @default(now())
+  sourceName      String
+  sourceHash      String   @unique
+  customerCode    String?
+  customerName    String?
+  status          String   @default("STAGED")
+  isCurrent       Boolean  @default(false)
+  lineCount       Int
+  totalPallets    Int
+  totalPackages   Int
+  totalKilos      Decimal
+  supersededAt    DateTime?
+  importRun       ImportRun @relation(fields: [importRunId], references: [id])
+  lines           StockLine[]
+
+  @@index([isCurrent, stockDate])
+  @@index([stockDate, importedAt])
+}
+
+model StockLine {
+  id                String   @id @default(cuid())
+  snapshotId        String
+  sourceRow         Int
+  dedupKey          String
+  customerCode      String?
+  customerName      String?
+  commissionDate    DateTime?
+  deliveryDate      DateTime?
+  containerNumber   String
+  pallets           Int
+  packages          Int
+  kilos             Decimal
+  productDescription String
+  lot               String
+  dua               String?
+  expirationDate    DateTime?
+  entryExit          String?
+  cote               String?
+  sanitaryPass       String?
+  snapshot           StockSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+
+  @@unique([snapshotId, dedupKey])
+  @@index([cote])
+  @@index([sanitaryPass])
+  @@index([lot])
+  @@index([containerNumber])
+  @@index([customerCode])
+}
+
+model AuditEvent {
+  id          String   @id @default(cuid())
+  importRunId String?
+  action      String
+  entityType String
+  entityId   String?
+  detailsJson String?
+  createdAt  DateTime @default(now())
+  importRun  ImportRun? @relation(fields: [importRunId], references: [id])
+
+  @@index([entityType, entityId])
+  @@index([createdAt])
 }
