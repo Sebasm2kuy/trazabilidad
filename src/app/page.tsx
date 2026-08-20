@@ -66,6 +66,9 @@ export default function Home() {
   }
 
   const renderContent = () => {
+    if (!user || !getAllowedTabs(user.role).includes(activeTab)) {
+      return <Dashboard />;
+    }
     switch (activeTab) {
       case 'dashboard': return <Dashboard />;
       case 'depositos': return <ShipmentTable />;
