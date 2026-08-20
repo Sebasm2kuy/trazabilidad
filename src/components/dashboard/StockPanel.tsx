@@ -4,17 +4,11 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Package, Upload, Search, X, FileCheck, Loader2, ChevronRight, ChevronDown } from 'lucide-react';
+import { Package, Upload, Search, X, ChevronRight, ChevronDown } from 'lucide-react';
 import { buildStockAggMap, SIN_CODIGO_KEY, type StockLoad, type StockCodigoAgg, type StockPallet } from '@/lib/parseStockXls';
-import { dataUrl } from '@/lib/staticData';
-import type { Shipment } from '@/lib/types';
+import type { ExpRecord, Shipment } from '@/lib/types';
+import { loadDepositos as loadDepCentral, loadExportaciones as loadExpCentral } from '@/lib/dataRepository';
 import { fd, fmt } from '@/lib/utils';
-import { toast } from 'sonner';
-import { schedulePush } from '@/lib/googleSheets';
-
-const STOCK_DATA_KEY = 'trazabilidad_stock_data';
-const STOCK_ASSIGN_KEY = 'trazabilidad_stock_assignments';
-const DEP_IMPORTED_KEY = 'trazabilidad_dep_imported';
 
 // Aggregate ingreso by COTE
 interface IngresoAgg {
@@ -137,30 +131,12 @@ function aggregateExportCajasByCote(expRecords: ExpRecord[]): Map<string, number
   return map;
 }
 
-import type { ExpRecord } from '@/lib/types';
-
-const EXP_IMPORTED_KEY = 'trazabilidad_exp_imported';
-
 async function loadExportaciones(): Promise<ExpRecord[]> {
-  const imported = localStorage.getItem(EXP_IMPORTED_KEY);
-  if (imported) {
-    try { return JSON.parse(imported); } catch { return []; }
-  }
-  try {
-    const r = await fetch(dataUrl('data/exportaciones.json'));
-    return await r.json();
-  } catch { return []; }
+  try { return await loadExpCentral(); } catch { return []; }
 }
 
 async function loadDepositos(): Promise<Shipment[]> {
-  const imported = localStorage.getItem(DEP_IMPORTED_KEY);
-  if (imported) {
-    try { return JSON.parse(imported); } catch { return []; }
-  }
-  try {
-    const r = await fetch(dataUrl('data/shipments.json'));
-    return await r.json();
-  } catch { return []; }
+  try { return await loadDepCentral(); } catch { return []; }
 }
 
 export default function StockPanel() {
@@ -169,7 +145,6 @@ export default function StockPanel() {
   const [ingresoMap, setIngresoMap] = useState<Map<string, IngresoAgg>>(new Map());
   const [exportCajasMap, setExportCajasMap] = useState<Map<string, number>>(new Map());
   const [loading, setLoading] = useState(true);
-  const [stockLoading, setStockLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [expandedCode, setExpandedCode] = useState<string | null>(null);
   const [dataVersion, setDataVersion] = useState(0);
@@ -178,16 +153,10 @@ export default function StockPanel() {
   useEffect(() => {
     (async () => {
       setLoading(true);
-      // Load stock
-      try {
-        const saved = localStorage.getItem(STOCK_DATA_KEY);
-        if (saved) setStockData(JSON.parse(saved));
-      } catch { /* ignore */ }
-      // Load assignments
-      try {
-        const saved = localStorage.getItem(STOCK_ASSIGN_KEY);
-        if (saved) setPalletAssignments(JSON.parse(saved));
-      } catch { /* ignore */ }
+      // Supabase is the only operational source. The current snapshot query will
+      // be enabled together with the transactional stock importer.
+      setStockData(null);
+      setPalletAssignments({});
       // Load depósitos + exportaciones
       const [deps, exps] = await Promise.all([loadDepositos(), loadExportaciones()]);
       setIngresoMap(aggregateIngresosByCote(deps));
@@ -203,21 +172,11 @@ export default function StockPanel() {
     return () => window.removeEventListener('trazabilidad-data-ready', handler);
   }, []);
 
-  // Reload stock + depósitos/exportaciones when dataVersion changes (Firebase pull)
+  // Reload Supabase movements when another screen reports a data change.
   useEffect(() => {
     if (dataVersion === 0) return;
-    // Reload stock from localStorage
-    try {
-      const saved = localStorage.getItem(STOCK_DATA_KEY);
-      if (saved) setStockData(JSON.parse(saved));
-      else setStockData(null);
-    } catch { /* ignore */ }
-    // Reload assignments
-    try {
-      const saved = localStorage.getItem(STOCK_ASSIGN_KEY);
-      if (saved) setPalletAssignments(JSON.parse(saved));
-      else setPalletAssignments({});
-    } catch { /* ignore */ }
+    setStockData(null);
+    setPalletAssignments({});
     // Reload depósitos/exportaciones
     (async () => {
       const [deps, exps] = await Promise.all([loadDepositos(), loadExportaciones()]);
@@ -271,44 +230,6 @@ export default function StockPanel() {
   const totalPallets = stockData?.pallets.length || 0;
   const totalCodigos = stockAggMap.size;
 
-  // Stock upload handler
-  const handleLoadStock = () => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = '.xls,.xlsx';
-    input.onchange = async (e) => {
-      const file = (e.target as HTMLInputElement).files?.[0];
-      if (!file) return;
-      setStockLoading(true);
-      try {
-        const { parseStockXls } = await import('@/lib/parseStockXls');
-        const load = await parseStockXls(file);
-        setStockData(load);
-        localStorage.setItem(STOCK_DATA_KEY, JSON.stringify(load));
-        setPalletAssignments({});
-        localStorage.removeItem(STOCK_ASSIGN_KEY);
-        schedulePush();
-        toast.success(`Stock cargado: ${load.pallets.length} pallets`);
-      } catch (err) {
-        toast.error(`Error al cargar stock: ${(err as Error).message}`);
-      } finally {
-        setStockLoading(false);
-      }
-    };
-    input.click();
-  };
-
-  // Clear stock
-  const handleClearStock = () => {
-    if (!confirm('¿Eliminar los datos de stock cargados?')) return;
-    setStockData(null);
-    setPalletAssignments({});
-    localStorage.removeItem(STOCK_DATA_KEY);
-    localStorage.removeItem(STOCK_ASSIGN_KEY);
-    schedulePush();
-    toast.info('Stock eliminado');
-  };
-
   if (loading) {
     return (
       <Card>
@@ -339,17 +260,11 @@ export default function StockPanel() {
               variant="default"
               size="sm"
               className="bg-teal-600 hover:bg-teal-700 gap-1.5"
-              disabled={stockLoading}
-              onClick={handleLoadStock}
+              disabled
             >
-              {stockLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-              {stockLoading ? 'Cargando...' : 'Cargar Stock XLS'}
+              <Upload className="h-4 w-4" />
+              Importación en preparación
             </Button>
-            {stockData && (
-              <Button variant="outline" size="sm" onClick={handleClearStock}>
-                <X className="h-4 w-4 mr-1" /> Limpiar
-              </Button>
-            )}
           </div>
         </div>
 
@@ -357,7 +272,7 @@ export default function StockPanel() {
           <div className="text-center py-16 text-slate-400">
             <Package className="h-12 w-12 mx-auto mb-3 opacity-30" />
             <p className="text-sm">No hay datos de stock cargados.</p>
-            <p className="text-xs mt-1">Hacé clic en <b>Cargar Stock XLS</b> para subir un archivo del depósito.</p>
+            <p className="text-xs mt-1">La base Supabase está vacía. La carga se habilitará con la importación transaccional.</p>
           </div>
         ) : (
           <>
