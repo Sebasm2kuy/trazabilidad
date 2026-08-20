@@ -43,6 +43,7 @@
     "node_modules",
     "db",
     "prisma",
+    "supabase/functions",
     "google-script",
     "examples",
     "skills"
