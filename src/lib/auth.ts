@@ -60,7 +60,7 @@ export function getAllowedTabs(role: UserRole): string[] {
       'dashboard', 'depositos', 'exportaciones',
       'cruce-caliral', 'cruces-x-cote', 'mercado-nacional',
       'trazabilidad-explorer', 'trazabilidad', 'comparativa',
-      'analiticas', 'importar', 'clientes-estrategicos',
+      'analiticas', 'clientes-estrategicos',
     ];
   }
   return ['clientes-estrategicos'];

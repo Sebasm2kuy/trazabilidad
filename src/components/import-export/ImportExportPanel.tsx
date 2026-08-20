@@ -6,15 +6,11 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { previewStockFile, type StockFilePreview } from '@/lib/import/stockPreview';
 import { fmt } from '@/lib/utils';
-import { getSupabaseBrowserClient } from '@/lib/supabase/client';
 
 export default function ImportExportPanel() {
   const inputRef = useRef<HTMLInputElement>(null);
   const [loading, setLoading] = useState(false);
   const [preview, setPreview] = useState<StockFilePreview | null>(null);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [confirming, setConfirming] = useState(false);
-  const [committed, setCommitted] = useState(false);
   const [error, setError] = useState('');
 
   const handleFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -23,43 +19,13 @@ export default function ImportExportPanel() {
     setLoading(true);
     setError('');
     setPreview(null);
-    setSelectedFile(null);
-    setCommitted(false);
     try {
       setPreview(await previewStockFile(file));
-      setSelectedFile(file);
     } catch (previewError) {
       setError(previewError instanceof Error ? previewError.message : 'No se pudo analizar el archivo.');
     } finally {
       setLoading(false);
       event.target.value = '';
-    }
-  };
-
-  const confirmImport = async () => {
-    if (!preview || !selectedFile || preview.rejectedRows.length > 0) return;
-    setConfirming(true);
-    setError('');
-    try {
-      const form = new FormData();
-      form.append('file', selectedFile);
-      form.append('payload', JSON.stringify({
-        sourceHash: preview.sourceHash,
-        sheetName: preview.sheetName,
-        headerRow: preview.headerRow,
-        stockDate: preview.stockDate,
-        duplicateRows: preview.duplicateRows,
-        lines: preview.allLines,
-      }));
-      const { error: invokeError } = await getSupabaseBrowserClient().functions.invoke('stock-import', { body: form });
-      if (invokeError) throw new Error(invokeError.message);
-      setCommitted(true);
-      setSelectedFile(null);
-      window.dispatchEvent(new CustomEvent('trazabilidad-data-ready'));
-    } catch (commitError) {
-      setError(commitError instanceof Error ? commitError.message : 'No se pudo confirmar la importación.');
-    } finally {
-      setConfirming(false);
     }
   };
 
@@ -141,15 +107,12 @@ export default function ImportExportPanel() {
             </CardContent>
           </Card>
 
-          <div className={`flex items-center justify-between gap-4 rounded-lg border p-4 ${committed ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'}`}>
-            <div className={`flex gap-2 text-sm ${committed ? 'text-emerald-800' : 'text-amber-800'}`}>
+          <div className="flex items-center justify-between gap-4 rounded-lg border border-amber-200 bg-amber-50 p-4">
+            <div className="flex gap-2 text-sm text-amber-800">
               <ShieldCheck className="h-5 w-5 shrink-0" />
-              {committed ? 'Importación confirmada. La nueva instantánea quedó vigente.' : 'La confirmación vuelve a validar y guarda toda la instantánea en una transacción.'}
+              La confirmación seguirá bloqueada hasta desplegar y probar la Edge Function transaccional.
             </div>
-            <Button onClick={confirmImport} disabled={confirming || committed || !selectedFile || preview.rejectedRows.length > 0}>
-              {confirming && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              {confirming ? 'Confirmando…' : committed ? 'Confirmada' : 'Confirmar importación'}
-            </Button>
+            <Button disabled>Confirmar importación</Button>
           </div>
         </>
       )}
